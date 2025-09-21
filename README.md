@@ -224,6 +224,6 @@ MIT License - See [LICENSE](LICENSE) for details
 ---
 
 **Built by Matthew Bixby**  
-[LinkedIn](#) | [Portfolio](#) | [Email](mailto:your-email@example.com)
+[LinkedIn](https://www.linkedin.com/in/matthew-bixby/) | [Portfolio](https://www.matthewbixby.com) | [Email](mailto:matthew.bixby1@gmail.com)
 
 *Combining chemistry expertise with software engineering to solve real-world problems*
