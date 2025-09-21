@@ -23,7 +23,7 @@ public class VectorStoreService {
     @Value("${cache.chemical.ttl-days:30}")
     private int cacheTtlDays;
 
-    @Value("${cache.chemical.similarity-threshold:0.98}")
+    @Value("${cache.chemical.similarity-threshold}")
     private double similarityThreshold;
 
     /**
@@ -65,7 +65,7 @@ public class VectorStoreService {
             SearchRequest request = SearchRequest.builder()
                     .query(searchKey)
                     .topK(10)  // Get more results
-                    .similarityThreshold(0.5)  // Much lower threshold
+                    .similarityThreshold(similarityThreshold) // set at 0.5 in app.properties
                     .build();
 
             List<Document> results = vectorStore.similaritySearch(request);
