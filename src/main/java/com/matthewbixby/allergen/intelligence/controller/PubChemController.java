@@ -9,9 +9,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/test")
+@RequestMapping("/api/pubchem")
 @RequiredArgsConstructor
-public class TestController {
+public class PubChemController {
 
     private final PubChemService pubChemService;
 
