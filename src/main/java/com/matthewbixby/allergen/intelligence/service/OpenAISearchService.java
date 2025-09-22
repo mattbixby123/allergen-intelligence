@@ -12,6 +12,10 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,9 +65,9 @@ public class OpenAISearchService {
         log.info("Searching for allergen effects for: {}", chemical.getCommonName());
 
         try {
-            // Configure web search with high context for medical research
+            // Configure web search with medium context for medical research
             WebSearchOptions webSearchOptions = new WebSearchOptions(
-                    SearchContextSize.HIGH, // Need comprehensive medical sources
+                    SearchContextSize.MEDIUM, // Need comprehensive medical sources
                     null
             );
 
@@ -74,13 +78,27 @@ public class OpenAISearchService {
             String systemPrompt = createSystemPrompt();
             String userPrompt = createUserPrompt(chemical);
 
-            String response = chatClient.prompt()
-                    .system(systemPrompt)
-                    .user(userPrompt)
-                    .options(options)
-                    .call()
-                    .content();
+            String response;
+            try {
+                response = CompletableFuture.supplyAsync(() -> {
+                    return chatClient.prompt()
+                            .system(systemPrompt)
+                            .user(userPrompt)
+                            .options(options)
+                            .call()
+                            .content();
+                }).get(45, TimeUnit.SECONDS); // ⏱️ Timeout after 45 seconds
 
+                log.info("Raw OpenAI response for {}: {}", chemical.getCommonName(), response);
+
+
+            } catch (TimeoutException e) {
+                log.error("OpenAI request timed out after 45s for allergen effects of {}", chemical.getCommonName());
+                return new ArrayList<>(); // EARLY RETURN
+            } catch (InterruptedException | ExecutionException e) {
+                log.error("OpenAI execution error for allergen effects of {}: {}", chemical.getCommonName(), e.getMessage());
+                return new ArrayList<>(); // EARLY RETURN
+            }
             // Cache the response for future use
             vectorStoreService.cacheAllergenEffects(chemical.getCommonName(), response);
 
@@ -169,13 +187,24 @@ public class OpenAISearchService {
                     chemical.getCommonName().toLowerCase(),
                     chemical.getCommonName().toLowerCase());
 
-            String response = chatClient.prompt()
-                    .system(systemPrompt)
-                    .user(userPrompt)
-                    .options(options)
-                    .call()
-                    .content();
+            String response;
+            try {
+                response = CompletableFuture.supplyAsync(() -> {
+                    return chatClient.prompt()
+                            .system(systemPrompt)
+                            .user(userPrompt)
+                            .options(options)
+                            .call()
+                            .content();
+                }).get(45, TimeUnit.SECONDS); // ⏱️ Timeout after 45 seconds
 
+            } catch (TimeoutException e) {
+                log.error("OpenAI request timed out after 45s for oxidation products of {}", chemical.getCommonName());
+                return new ArrayList<>(); // EARLY RETURN
+            } catch (InterruptedException | ExecutionException e) {
+                log.error("OpenAI execution error for oxidation products of {}: {}", chemical.getCommonName(), e.getMessage());
+                return new ArrayList<>(); // EARLY RETURN
+            }
             // Cache the response
             vectorStoreService.cacheOxidationProducts(chemical.getCommonName(), response);
 
@@ -291,6 +320,8 @@ public class OpenAISearchService {
             // Parse structured response format
             String[] effects = response.split("EFFECT:");
 
+            log.debug("Parsing response with {} EFFECT blocks", effects.length);
+
             for (int i = 1; i < effects.length; i++) { // Skip first empty split
                 String effectBlock = effects[i].trim();
                 SideEffect sideEffect = parseIndividualEffect(effectBlock, chemical);
@@ -311,6 +342,8 @@ public class OpenAISearchService {
 
     private SideEffect parseIndividualEffect(String effectBlock, ChemicalIdentification chemical) {
         try {
+            log.debug("Processing effect block: {}", effectBlock.substring(0, Math.min(300, effectBlock.length())));
+
             SideEffect.SideEffectBuilder builder = SideEffect.builder()
                     .chemical(chemical)
                     .sources(new ArrayList<>())
@@ -320,6 +353,8 @@ public class OpenAISearchService {
 
             // Extract effect name
             String effectName = extractField(effectBlock, "EFFECT", "SEVERITY");
+            log.debug("Extracted effect name: '{}'", effectName);
+
             if (effectName == null) return null;
 
             builder.effectType(effectName.trim());
@@ -412,11 +447,23 @@ public class OpenAISearchService {
     private String extractField(String text, String startField, String endField) {
         try {
             Pattern pattern;
+
+            // Handle both "EFFECT:" and "** EffectName" formats
+            if (startField.equals("EFFECT")) {
+                // Look for markdown format: ** EffectName
+                pattern = Pattern.compile("\\*\\*\\s*([^*]+?)\\s*(?:\\n|$)", Pattern.CASE_INSENSITIVE);
+                Matcher matcher = pattern.matcher(text);
+                if (matcher.find()) {
+                    return matcher.group(1).trim();
+                }
+            }
+
+            // Handle other fields with markdown: **FIELD:** Value
             if (endField != null) {
-                pattern = Pattern.compile(startField + "\\s*[:\\-]?\\s*(.*?)\\s*" + endField,
+                pattern = Pattern.compile("\\*\\*" + startField + ":\\*\\*\\s*(.*?)(?=\\*\\*|$)",
                         Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
             } else {
-                pattern = Pattern.compile(startField + "\\s*[:\\-]?\\s*(.*)",
+                pattern = Pattern.compile("\\*\\*" + startField + ":\\*\\*\\s*(.*)",
                         Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
             }
 
