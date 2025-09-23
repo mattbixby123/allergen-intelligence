@@ -100,6 +100,13 @@ public class VectorStoreService {
     private void cacheData(String key, String jsonData, String dataType) {
         try {
             String cacheKey = dataType + ":" + key.toLowerCase().trim();
+            String content = cacheKey + "\n" + jsonData;
+
+            // Check if content is too large (rough estimate)
+            if (content.length() > 50000) { // Adjust threshold as needed
+                log.warn("Skipping cache for {} - content too large ({} chars)", key, content.length());
+                return;
+            }
 
             Map<String, Object> metadata = new HashMap<>();
             metadata.put("cache_key", cacheKey);  // Store exact key for verification
@@ -109,7 +116,6 @@ public class VectorStoreService {
             metadata.put("ttl_days", cacheTtlDays);
 
             // Create document with the cache key as prefix for better exact matching
-            String content = cacheKey + "\n" + jsonData;
             Document doc = new Document(content, metadata);
 
             vectorStore.add(List.of(doc));
@@ -152,5 +158,22 @@ public class VectorStoreService {
         stats.put("similarity_threshold", similarityThreshold);
         // Add more stats as needed
         return stats;
+    }
+
+    // These methods are related to the OpenAISearchService caching
+    public Optional<String> getCachedAllergenEffects(String chemicalName) {
+        return getCachedData(chemicalName, "openai_allergen_effects");
+    }
+
+    public void cacheAllergenEffects(String chemicalName, String jsonData) {
+        cacheData(chemicalName, jsonData, "openai_allergen_effects");
+    }
+
+    public Optional<String> getCachedOxidationProducts(String chemicalName) {
+        return getCachedData(chemicalName, "openai_oxidation_products");
+    }
+
+    public void cacheOxidationProducts(String chemicalName, String jsonData) {
+        cacheData(chemicalName, jsonData, "openai_oxidation_products");
     }
 }

@@ -45,7 +45,7 @@ A RAG-powered platform that bridges the gap between ingredient labels and actual
 - [x] Configuration setup (application.yml, vector store)
 
 ### 🔄 In Progress (Phase 1 - Foundation)
-- [ ] PubChem service implementation
+- [x] PubChem service implementation
 - [ ] Chemical data extraction and parsing
 - [ ] Basic REST API endpoints
 - [ ] Repository implementations
