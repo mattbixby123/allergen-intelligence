@@ -2,6 +2,8 @@ package com.matthewbixby.allergen.intelligence.controller;
 
 import com.matthewbixby.allergen.intelligence.model.ChemicalIdentification;
 import com.matthewbixby.allergen.intelligence.model.SideEffect;
+import com.matthewbixby.allergen.intelligence.repository.ChemicalRepository;
+import com.matthewbixby.allergen.intelligence.repository.SideEffectRepository;
 import com.matthewbixby.allergen.intelligence.service.OpenAISearchService;
 import com.matthewbixby.allergen.intelligence.service.PubChemService;
 import lombok.RequiredArgsConstructor;
@@ -9,10 +11,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/allergen")
@@ -22,31 +26,28 @@ public class AllergenSearchController {
 
     private final PubChemService pubChemService;
     private final OpenAISearchService openAISearchService;
+    private final ChemicalRepository chemicalRepository;
+    private final SideEffectRepository sideEffectRepository;
 
     /**
-     * Complete allergen analysis pipeline
+     * Complete allergen analysis pipeline with database persistence
      */
     @GetMapping("/analyze/{ingredientName}")
     public ResponseEntity<Map<String, Object>> analyzeAllergen(@PathVariable String ingredientName) {
         try {
             log.info("Starting allergen analysis for: {}", ingredientName);
 
-            // Step 1: Get chemical identification from PubChem
-            ChemicalIdentification chemical = pubChemService.getChemicalData(ingredientName);
+            // Step 1: Get or create chemical identification
+            ChemicalIdentification chemical = getOrCreateChemical(ingredientName);
             if (chemical == null) {
                 return ResponseEntity.notFound().build();
             }
 
-            // Step 2: Search for side effects using OpenAI web search
-            List<SideEffect> sideEffects = openAISearchService.searchAllergenEffects(chemical);
+            // Step 2: Get side effects (database first, then OpenAI if needed)
+            List<SideEffect> sideEffects = getOrCreateSideEffects(chemical);
 
-            // Step 3: Search for oxidation products
-            List<String> oxidationProducts = openAISearchService.searchOxidationProducts(chemical);
-
-            // Update chemical with oxidation products
-            if (!oxidationProducts.isEmpty()) {
-                chemical.setOxidationProducts(oxidationProducts);
-            }
+            // Step 3: Get oxidation products (database first, then OpenAI if needed)
+            List<String> oxidationProducts = getOrCreateOxidationProducts(chemical);
 
             // Build comprehensive response
             Map<String, Object> analysis = new HashMap<>();
@@ -63,7 +64,7 @@ public class AllergenSearchController {
             return ResponseEntity.ok(analysis);
 
         } catch (Exception e) {
-            log.error("Error analyzing allergen {}: {}", ingredientName, e.getMessage());
+            log.error("Error analyzing allergen {}: {}", ingredientName, e.getMessage(), e);
             return ResponseEntity.internalServerError()
                     .body(Map.of("error", "Analysis failed: " + e.getMessage()));
         }
@@ -108,10 +109,11 @@ public class AllergenSearchController {
             for (String ingredient : ingredients) {
                 log.info("Analyzing ingredient in batch: {}", ingredient);
 
-                ChemicalIdentification chemical = pubChemService.getChemicalData(ingredient);
+                // Use the same database-first approach for batch processing
+                ChemicalIdentification chemical = getOrCreateChemical(ingredient);
                 if (chemical != null) {
-                    List<SideEffect> sideEffects = openAISearchService.searchAllergenEffects(chemical);
-                    List<String> oxidationProducts = openAISearchService.searchOxidationProducts(chemical);
+                    List<SideEffect> sideEffects = getOrCreateSideEffects(chemical);
+                    List<String> oxidationProducts = getOrCreateOxidationProducts(chemical);
 
                     Map<String, Object> result = new HashMap<>();
                     result.put("chemical", chemical);
@@ -149,7 +151,94 @@ public class AllergenSearchController {
         return ResponseEntity.ok(health);
     }
 
-    // Helper methods
+    // Database-first helper methods
+    private ChemicalIdentification getOrCreateChemical(String ingredientName) {
+        // First check if we already have this chemical in the database
+        Optional<ChemicalIdentification> existing = chemicalRepository.findByCommonNameIgnoreCase(ingredientName);
+        if (existing.isPresent()) {
+            log.info("Using existing chemical from database: {}", ingredientName);
+            return existing.get();
+        }
+
+        // Not in database, get from PubChem
+        ChemicalIdentification chemical = pubChemService.getChemicalData(ingredientName);
+        if (chemical == null) {
+            return null;
+        }
+
+        // Check if we have this PubChem CID already (different name, same compound)
+        if (chemical.getPubchemCid() != null) {
+            existing = chemicalRepository.findByPubchemCid(chemical.getPubchemCid());
+            if (existing.isPresent()) {
+                log.info("Found existing chemical by CID: {} for name: {}",
+                        chemical.getPubchemCid(), ingredientName);
+                return existing.get();
+            }
+        }
+
+        // Save new chemical to database
+        chemical = chemicalRepository.save(chemical);
+        log.info("Saved new chemical to database: {} (CID: {})",
+                chemical.getCommonName(), chemical.getPubchemCid());
+
+        return chemical;
+    }
+
+    private List<SideEffect> getOrCreateSideEffects(ChemicalIdentification chemical) {
+        // First check if we already have persisted side effects for this chemical
+        List<SideEffect> existingSideEffects = sideEffectRepository.findByChemical_Id(chemical.getId());
+
+        if (!existingSideEffects.isEmpty()) {
+            log.info("Using existing {} side effects from database for: {}",
+                    existingSideEffects.size(), chemical.getCommonName());
+            return existingSideEffects;
+        }
+
+        // No persisted data, get from OpenAI (will use vector cache if available)
+        log.info("No existing side effects found, searching via OpenAI for: {}", chemical.getCommonName());
+        List<SideEffect> sideEffects = openAISearchService.searchAllergenEffects(chemical);
+
+        // Persist the parsed results to database
+        if (!sideEffects.isEmpty()) {
+            // Ensure all side effects have the correct chemical reference
+            sideEffects.forEach(effect -> effect.setChemical(chemical));
+            sideEffects = sideEffectRepository.saveAll(sideEffects);
+            log.info("Persisted {} side effects to database for: {}",
+                    sideEffects.size(), chemical.getCommonName());
+        } else {
+            log.warn("No side effects found for: {}", chemical.getCommonName());
+        }
+
+        return sideEffects;
+    }
+
+    private List<String> getOrCreateOxidationProducts(ChemicalIdentification chemical) {
+        // Check if we already have oxidation products for this chemical
+        if (chemical.getOxidationProducts() != null && !chemical.getOxidationProducts().isEmpty()) {
+            log.info("Using existing {} oxidation products from database for: {}",
+                    chemical.getOxidationProducts().size(), chemical.getCommonName());
+            return chemical.getOxidationProducts();
+        }
+
+        // No persisted oxidation products, get from OpenAI (will use vector cache if available)
+        log.info("No existing oxidation products found, searching via OpenAI for: {}", chemical.getCommonName());
+        List<String> oxidationProducts = openAISearchService.searchOxidationProducts(chemical);
+
+        // Persist oxidation products to the chemical entity
+        if (!oxidationProducts.isEmpty()) {
+            chemical.setOxidationProducts(oxidationProducts);
+            chemical.setLastUpdated(LocalDateTime.now());
+            chemicalRepository.save(chemical);
+            log.info("Persisted {} oxidation products to database for: {}",
+                    oxidationProducts.size(), chemical.getCommonName());
+        } else {
+            log.warn("No oxidation products found for: {}", chemical.getCommonName());
+        }
+
+        return oxidationProducts;
+    }
+
+    // Risk assessment and warning helper methods
     private Map<String, Object> generateRiskAssessment(List<SideEffect> sideEffects) {
         Map<String, Object> assessment = new HashMap<>();
 
