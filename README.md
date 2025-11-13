@@ -54,39 +54,39 @@ A RAG-powered platform that bridges the gap between ingredient labels and actual
 ### 📋 Upcoming Phases
 
 **Phase 2: AI Integration** (Week 2)
-- OpenAI client configuration
-- Web search service with source attribution
-- Vector store integration
-- Embedding generation pipeline
+- [ ] OpenAI client configuration
+- [ ] Web search service with source attribution
+- [ ] Vector store integration
+- [ ] Embedding generation pipeline
 
 **Phase 3: Chemical Intelligence** (Week 3)
-- Allergen identification logic
-- Oxidation product mapping algorithms
-- Chemical family classification
-- Knowledge base bootstrapping
+- [ ] Allergen identification logic
+- [ ] Oxidation product mapping algorithms
+- [ ] Chemical family classification
+- [ ] Knowledge base bootstrapping
 
 **Phase 4: RAG Pipeline** (Week 4)
-- Context retrieval from vector store
-- Prompt engineering for comprehensive reports
-- Response validation
-- Citation and source tracking
+- [ ] Context retrieval from vector store
+- [ ] Prompt engineering for comprehensive reports
+- [ ] Response validation
+- [ ] Citation and source tracking
 
 **Phase 5: Image Processing** (Week 5)
-- GPT-4 Vision integration for ingredient extraction
-- OCR fallback with Tesseract
-- Image preprocessing pipeline
+- [ ] GPT-4 Vision integration for ingredient extraction
+- [ ] OCR fallback with Tesseract
+- [ ] Image preprocessing pipeline
 
 **Phase 6: Polish & Deploy** (Week 6)
-- Comprehensive error handling
-- OpenAPI documentation
-- Performance optimization
-- Production deployment
+- [ ] Comprehensive error handling
+- [ ] OpenAPI documentation
+- [ ] Performance optimization
+- [ ] Production deployment
 
 **Phase 7: Frontend** (Week 7-8)
-- Next.js application
-- Image upload interface
-- Results visualization
-- Responsive design
+- [ ] Remix.js application
+- [ ] Image upload interface
+- [ ] Results visualization
+- [ ] Responsive design
 
 [View detailed roadmap →](docs/ROADMAP.md)
 
