@@ -9,9 +9,6 @@ import lombok.NoArgsConstructor;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class AuthenticationResponse {
-    private String token;
-    private String refreshToken;
-    private String email;
-    private Integer expiresIn; // seconds until access token expires
+public class ProductAnalysisRequest {
+    private String productName;
 }

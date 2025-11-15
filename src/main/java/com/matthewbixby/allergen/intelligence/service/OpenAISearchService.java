@@ -1,11 +1,10 @@
 package com.matthewbixby.allergen.intelligence.service;
 
 import com.matthewbixby.allergen.intelligence.model.*;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
-import org.springframework.ai.openai.api.OpenAiApi;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -24,27 +23,28 @@ import static org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest.
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class OpenAISearchService {
 
     private final ChatClient chatClient;
     private final VectorStoreService vectorStoreService;
 
-    public OpenAISearchService(VectorStoreService vectorStoreService) {
-        this.vectorStoreService = vectorStoreService;
-
-        String apiKey = System.getenv("OPENAI_API_KEY");
-
-        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
-                .model("gpt-4o-search-preview")
-                .build();
-
-        OpenAiChatModel openAiChatModel = OpenAiChatModel.builder()
-                .openAiApi(OpenAiApi.builder().apiKey(apiKey).build())
-                .defaultOptions(chatOptions)
-                .build();
-
-        this.chatClient = ChatClient.builder(openAiChatModel).build();
-    }
+//    public OpenAISearchService(VectorStoreService vectorStoreService) {
+//        this.vectorStoreService = vectorStoreService;
+//
+//        String apiKey = System.getenv("OPENAI_API_KEY");
+//
+//        OpenAiChatOptions chatOptions = OpenAiChatOptions.builder()
+//                .model("gpt-4o-search-preview")
+//                .build();
+//
+//        OpenAiChatModel openAiChatModel = OpenAiChatModel.builder()
+//                .openAiApi(OpenAiApi.builder().apiKey(apiKey).build())
+//                .defaultOptions(chatOptions)
+//                .build();
+//
+//        this.chatClient = ChatClient.builder(openAiChatModel).build();
+//    }
 
     /**
      * Search for allergen side effects using OpenAI's web search capabilities
@@ -214,6 +214,22 @@ public class OpenAISearchService {
             log.error("Error searching oxidation products for {}: {}", chemical.getCommonName(), e.getMessage());
             return new ArrayList<>();
         }
+    }
+
+    /**
+     * PUBLIC METHOD: Parse side effects from cached response
+     * Used by AllergenSearchController when vector cache hit occurs
+     */
+    public List<SideEffect> parseSideEffectsFromCache(String cachedResponse, ChemicalIdentification chemical) {
+        return parseSideEffectsResponse(cachedResponse, chemical);
+    }
+
+    /**
+     * PUBLIC METHOD: Parse oxidation products from cached response
+     * Used by AllergenSearchController when vector cache hit occurs
+     */
+    public List<String> parseOxidationProductsFromCache(String cachedResponse) {
+        return parseOxidationProducts(cachedResponse);
     }
 
     private String createSystemPrompt() {

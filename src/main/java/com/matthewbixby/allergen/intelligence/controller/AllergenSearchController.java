@@ -1,13 +1,21 @@
 package com.matthewbixby.allergen.intelligence.controller;
 
+import com.matthewbixby.allergen.intelligence.dto.IngredientAnalysis;
+import com.matthewbixby.allergen.intelligence.dto.ProductAnalysisRequest;
+import com.matthewbixby.allergen.intelligence.dto.ProductAnalysisResponse;
 import com.matthewbixby.allergen.intelligence.model.ChemicalIdentification;
 import com.matthewbixby.allergen.intelligence.model.SideEffect;
 import com.matthewbixby.allergen.intelligence.repository.ChemicalRepository;
 import com.matthewbixby.allergen.intelligence.repository.SideEffectRepository;
+import com.matthewbixby.allergen.intelligence.service.JwtService;
 import com.matthewbixby.allergen.intelligence.service.OpenAISearchService;
 import com.matthewbixby.allergen.intelligence.service.PubChemService;
+import com.matthewbixby.allergen.intelligence.service.UsageTrackingService;
+import com.matthewbixby.allergen.intelligence.service.VectorStoreService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,6 +25,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import static org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest.WebSearchOptions;
+import static org.springframework.ai.openai.api.OpenAiApi.ChatCompletionRequest.WebSearchOptions.SearchContextSize;
 
 @RestController
 @RequestMapping("/api/allergen")
@@ -28,28 +39,32 @@ public class AllergenSearchController {
     private final OpenAISearchService openAISearchService;
     private final ChemicalRepository chemicalRepository;
     private final SideEffectRepository sideEffectRepository;
+    private final JwtService jwtService;
+    private final UsageTrackingService usageTrackingService;
+    private final ChatClient chatClient;
+    private final VectorStoreService vectorStoreService;
 
     /**
-     * Complete allergen analysis pipeline with database persistence
+     * Complete allergen analysis pipeline with database persistence and usage tracking
      */
     @GetMapping("/analyze/{ingredientName}")
-    public ResponseEntity<Map<String, Object>> analyzeAllergen(@PathVariable String ingredientName) {
+    public ResponseEntity<Map<String, Object>> analyzeAllergen(
+            @PathVariable String ingredientName,
+            @RequestHeader("Authorization") String authHeader) {
         try {
             log.info("Starting allergen analysis for: {}", ingredientName);
 
-            // Step 1: Get or create chemical identification
+            String token = authHeader.substring(7);
+            String userEmail = jwtService.extractUsername(token);
+
             ChemicalIdentification chemical = getOrCreateChemical(ingredientName);
             if (chemical == null) {
                 return ResponseEntity.notFound().build();
             }
 
-            // Step 2: Get side effects (database first, then OpenAI if needed)
-            List<SideEffect> sideEffects = getOrCreateSideEffects(chemical);
+            List<SideEffect> sideEffects = getOrCreateSideEffects(chemical, userEmail);
+            List<String> oxidationProducts = getOrCreateOxidationProducts(chemical, userEmail);
 
-            // Step 3: Get oxidation products (database first, then OpenAI if needed)
-            List<String> oxidationProducts = getOrCreateOxidationProducts(chemical);
-
-            // Build comprehensive response
             Map<String, Object> analysis = new HashMap<>();
             analysis.put("chemical", chemical);
             analysis.put("sideEffects", sideEffects);
@@ -102,18 +117,21 @@ public class AllergenSearchController {
      * Batch analysis for multiple ingredients
      */
     @PostMapping("/analyze-batch")
-    public ResponseEntity<Map<String, Object>> analyzeBatch(@RequestBody List<String> ingredients) {
+    public ResponseEntity<Map<String, Object>> analyzeBatch(
+            @RequestBody List<String> ingredients,
+            @RequestHeader("Authorization") String authHeader) {
+
         Map<String, Object> batchResults = new HashMap<>();
+        String userEmail = jwtService.extractUsername(authHeader.substring(7));
 
         try {
             for (String ingredient : ingredients) {
                 log.info("Analyzing ingredient in batch: {}", ingredient);
 
-                // Use the same database-first approach for batch processing
                 ChemicalIdentification chemical = getOrCreateChemical(ingredient);
                 if (chemical != null) {
-                    List<SideEffect> sideEffects = getOrCreateSideEffects(chemical);
-                    List<String> oxidationProducts = getOrCreateOxidationProducts(chemical);
+                    List<SideEffect> sideEffects = getOrCreateSideEffects(chemical, userEmail);
+                    List<String> oxidationProducts = getOrCreateOxidationProducts(chemical, userEmail);
 
                     Map<String, Object> result = new HashMap<>();
                     result.put("chemical", chemical);
@@ -140,33 +158,129 @@ public class AllergenSearchController {
     }
 
     /**
+     * Analyze a complete product by name - searches for ingredient list and analyzes each
+     */
+    @PostMapping("/analyze-product")
+    public ResponseEntity<ProductAnalysisResponse> analyzeProduct(
+            @RequestBody ProductAnalysisRequest request,
+            @RequestHeader("Authorization") String authHeader) {
+
+        String productName = request.getProductName();
+        if (productName == null || productName.isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(ProductAnalysisResponse.builder()
+                            .error("Product name is required")
+                            .build());
+        }
+
+        try {
+            log.info("Starting product analysis for: {}", productName);
+            String userEmail = jwtService.extractUsername(authHeader.substring(7));
+
+            // Step 1: Use OpenAI to find the ingredient list (ALWAYS uses tokens)
+            List<String> ingredients = searchProductIngredients(productName, userEmail);
+
+            if (ingredients.isEmpty()) {
+                return ResponseEntity.ok(ProductAnalysisResponse.builder()
+                        .productName(productName)
+                        .error("Could not find ingredient list for this product. Try using the full product name with brand (e.g., 'CeraVe Moisturizing Cream')")
+                        .totalIngredients(0)
+                        .highRiskIngredients(0)
+                        .overallRiskLevel("UNKNOWN")
+                        .disclaimer(getMedicalDisclaimer())
+                        .build());
+            }
+
+            // Step 2: Analyze each ingredient (uses cache if available!)
+            Map<String, IngredientAnalysis> detailedAnalysis = new HashMap<>();
+            int highRiskCount = 0;
+            int totalAnalyzed = 0;
+
+            for (String ingredient : ingredients) {
+                log.info("Analyzing ingredient in product: {}", ingredient);
+
+                ChemicalIdentification chemical = getOrCreateChemical(ingredient);
+                if (chemical != null) {
+                    // These will use THREE-TIER CACHE: Database → Vector → OpenAI
+                    List<SideEffect> sideEffects = getOrCreateSideEffects(chemical, userEmail);
+                    List<String> oxidationProducts = getOrCreateOxidationProducts(chemical, userEmail);
+
+                    String riskLevel = calculateRiskLevel(sideEffects);
+                    if ("HIGH".equals(riskLevel)) {
+                        highRiskCount++;
+                    }
+
+                    IngredientAnalysis analysis = IngredientAnalysis.builder()
+                            .chemical(chemical)
+                            .sideEffects(sideEffects)
+                            .oxidationProducts(oxidationProducts)
+                            .riskLevel(riskLevel)
+                            .build();
+
+                    detailedAnalysis.put(ingredient, analysis);
+                    totalAnalyzed++;
+                } else {
+                    detailedAnalysis.put(ingredient, IngredientAnalysis.builder()
+                            .error("Chemical data not found")
+                            .riskLevel("UNKNOWN")
+                            .build());
+                }
+            }
+
+            // Step 3: Build response
+            ProductAnalysisResponse response = ProductAnalysisResponse.builder()
+                    .productName(productName)
+                    .totalIngredients(totalAnalyzed)
+                    .highRiskIngredients(highRiskCount)
+                    .overallRiskLevel(determineOverallRisk(highRiskCount, totalAnalyzed))
+                    .ingredients(ingredients)
+                    .detailedAnalysis(detailedAnalysis)
+                    .recommendations(generateProductRecommendations(highRiskCount, totalAnalyzed))
+                    .disclaimer(getMedicalDisclaimer())
+                    .build();
+
+            log.info("Completed product analysis for: {} - {} ingredients, {} high risk",
+                    productName, totalAnalyzed, highRiskCount);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Error analyzing product {}: {}", productName, e.getMessage(), e);
+            return ResponseEntity.internalServerError()
+                    .body(ProductAnalysisResponse.builder()
+                            .productName(productName)
+                            .error("Product analysis failed: " + e.getMessage())
+                            .disclaimer(getMedicalDisclaimer())
+                            .build());
+        }
+    }
+
+    /**
      * Health check for search functionality
      */
     @GetMapping("/search/health")
     public ResponseEntity<Map<String, Object>> searchHealth() {
         Map<String, Object> health = new HashMap<>();
         health.put("status", "operational");
-        health.put("searchCapabilities", List.of("allergen_effects", "oxidation_products", "clinical_data"));
+        health.put("searchCapabilities", List.of("allergen_effects", "oxidation_products", "clinical_data", "product_analysis"));
         health.put("disclaimer", getMedicalDisclaimer());
         return ResponseEntity.ok(health);
     }
 
-    // Database-first helper methods
+    // ========== PRIVATE HELPER METHODS ==========
+
     private ChemicalIdentification getOrCreateChemical(String ingredientName) {
-        // First check if we already have this chemical in the database
         Optional<ChemicalIdentification> existing = chemicalRepository.findByCommonNameIgnoreCase(ingredientName);
         if (existing.isPresent()) {
             log.info("Using existing chemical from database: {}", ingredientName);
             return existing.get();
         }
 
-        // Not in database, get from PubChem
         ChemicalIdentification chemical = pubChemService.getChemicalData(ingredientName);
         if (chemical == null) {
             return null;
         }
 
-        // Check if we have this PubChem CID already (different name, same compound)
         if (chemical.getPubchemCid() != null) {
             existing = chemicalRepository.findByPubchemCid(chemical.getPubchemCid());
             if (existing.isPresent()) {
@@ -176,7 +290,6 @@ public class AllergenSearchController {
             }
         }
 
-        // Save new chemical to database
         chemical = chemicalRepository.save(chemical);
         log.info("Saved new chemical to database: {} (CID: {})",
                 chemical.getCommonName(), chemical.getPubchemCid());
@@ -184,23 +297,64 @@ public class AllergenSearchController {
         return chemical;
     }
 
-    private List<SideEffect> getOrCreateSideEffects(ChemicalIdentification chemical) {
-        // First check if we already have persisted side effects for this chemical
+    /**
+     * THREE-TIER CACHE STRATEGY for Side Effects:
+     * TIER 1: Database (fastest - milliseconds)
+     * TIER 2: Vector Cache (fast - ~100ms, no tokens)
+     * TIER 3: OpenAI API (slow - seconds, uses tokens)
+     */
+    private List<SideEffect> getOrCreateSideEffects(ChemicalIdentification chemical, String userEmail) {
+        // TIER 1: Check database cache (fastest)
         List<SideEffect> existingSideEffects = sideEffectRepository.findByChemical_Id(chemical.getId());
 
         if (!existingSideEffects.isEmpty()) {
-            log.info("Using existing {} side effects from database for: {}",
+            log.info("✅ DATABASE CACHE HIT: Using existing {} side effects for: {} (NO TOKENS USED)",
                     existingSideEffects.size(), chemical.getCommonName());
             return existingSideEffects;
         }
 
-        // No persisted data, get from OpenAI (will use vector cache if available)
-        log.info("No existing side effects found, searching via OpenAI for: {}", chemical.getCommonName());
+        // TIER 2: Check vector cache (fast, no tokens)
+        Optional<String> cachedResponse = vectorStoreService.getCachedAllergenEffects(chemical.getCommonName());
+        if (cachedResponse.isPresent()) {
+            try {
+                log.info("✅ VECTOR CACHE HIT: Found cached allergen effects for: {} (NO TOKENS USED)",
+                        chemical.getCommonName());
+
+                // Parse the cached response using OpenAISearchService's parser
+                List<SideEffect> sideEffects = openAISearchService.parseSideEffectsFromCache(
+                        cachedResponse.get(), chemical);
+
+                if (!sideEffects.isEmpty()) {
+                    // Persist to database for even faster future lookups
+                    sideEffects.forEach(effect -> effect.setChemical(chemical));
+                    sideEffects = sideEffectRepository.saveAll(sideEffects);
+                    log.info("Persisted {} side effects from vector cache to database for: {}",
+                            sideEffects.size(), chemical.getCommonName());
+                    return sideEffects;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse cached side effects for {}, will fetch fresh: {}",
+                        chemical.getCommonName(), e.getMessage());
+            }
+        }
+
+        // TIER 3: Cache miss - call OpenAI (slow, uses tokens)
+        log.info("🔍 CACHE MISS: No cached data found, searching via OpenAI for: {} (TOKENS WILL BE USED)",
+                chemical.getCommonName());
+
+        String estimatedPrompt = String.format("Search allergen effects for %s", chemical.getCommonName());
+        int estimatedPromptTokens = usageTrackingService.estimateTokens(estimatedPrompt);
+
+        // OpenAISearchService will handle its own vector caching internally
         List<SideEffect> sideEffects = openAISearchService.searchAllergenEffects(chemical);
 
-        // Persist the parsed results to database
+        String estimatedResponse = sideEffects.toString();
+        int estimatedResponseTokens = usageTrackingService.estimateTokens(estimatedResponse);
+        int totalTokens = estimatedPromptTokens + estimatedResponseTokens;
+
+        usageTrackingService.trackAnalysis(userEmail, totalTokens);
+
         if (!sideEffects.isEmpty()) {
-            // Ensure all side effects have the correct chemical reference
             sideEffects.forEach(effect -> effect.setChemical(chemical));
             sideEffects = sideEffectRepository.saveAll(sideEffects);
             log.info("Persisted {} side effects to database for: {}",
@@ -212,19 +366,62 @@ public class AllergenSearchController {
         return sideEffects;
     }
 
-    private List<String> getOrCreateOxidationProducts(ChemicalIdentification chemical) {
-        // Check if we already have oxidation products for this chemical
+    /**
+     * THREE-TIER CACHE STRATEGY for Oxidation Products:
+     * TIER 1: Database (fastest - milliseconds)
+     * TIER 2: Vector Cache (fast - ~100ms, no tokens)
+     * TIER 3: OpenAI API (slow - seconds, uses tokens)
+     */
+    private List<String> getOrCreateOxidationProducts(ChemicalIdentification chemical, String userEmail) {
+        // TIER 1: Check database cache (fastest)
         if (chemical.getOxidationProducts() != null && !chemical.getOxidationProducts().isEmpty()) {
-            log.info("Using existing {} oxidation products from database for: {}",
+            log.info("✅ DATABASE CACHE HIT: Using existing {} oxidation products for: {} (NO TOKENS USED)",
                     chemical.getOxidationProducts().size(), chemical.getCommonName());
             return chemical.getOxidationProducts();
         }
 
-        // No persisted oxidation products, get from OpenAI (will use vector cache if available)
-        log.info("No existing oxidation products found, searching via OpenAI for: {}", chemical.getCommonName());
+        // TIER 2: Check vector cache (fast, no tokens)
+        Optional<String> cachedResponse = vectorStoreService.getCachedOxidationProducts(chemical.getCommonName());
+        if (cachedResponse.isPresent()) {
+            try {
+                log.info("✅ VECTOR CACHE HIT: Found cached oxidation products for: {} (NO TOKENS USED)",
+                        chemical.getCommonName());
+
+                // Parse the cached response using OpenAISearchService's parser
+                List<String> oxidationProducts = openAISearchService.parseOxidationProductsFromCache(
+                        cachedResponse.get());
+
+                if (!oxidationProducts.isEmpty()) {
+                    // Persist to database for even faster future lookups
+                    chemical.setOxidationProducts(oxidationProducts);
+                    chemical.setLastUpdated(LocalDateTime.now());
+                    chemicalRepository.save(chemical);
+                    log.info("Persisted {} oxidation products from vector cache to database for: {}",
+                            oxidationProducts.size(), chemical.getCommonName());
+                    return oxidationProducts;
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse cached oxidation products for {}, will fetch fresh: {}",
+                        chemical.getCommonName(), e.getMessage());
+            }
+        }
+
+        // TIER 3: Cache miss - call OpenAI (slow, uses tokens)
+        log.info("🔍 CACHE MISS: No cached data found, searching via OpenAI for: {} (TOKENS WILL BE USED)",
+                chemical.getCommonName());
+
+        String estimatedPrompt = String.format("Search oxidation products for %s", chemical.getCommonName());
+        int estimatedPromptTokens = usageTrackingService.estimateTokens(estimatedPrompt);
+
+        // OpenAISearchService will handle its own vector caching internally
         List<String> oxidationProducts = openAISearchService.searchOxidationProducts(chemical);
 
-        // Persist oxidation products to the chemical entity
+        String estimatedResponse = String.join(", ", oxidationProducts);
+        int estimatedResponseTokens = usageTrackingService.estimateTokens(estimatedResponse);
+        int totalTokens = estimatedPromptTokens + estimatedResponseTokens;
+
+        usageTrackingService.trackAnalysis(userEmail, totalTokens);
+
         if (!oxidationProducts.isEmpty()) {
             chemical.setOxidationProducts(oxidationProducts);
             chemical.setLastUpdated(LocalDateTime.now());
@@ -238,7 +435,85 @@ public class AllergenSearchController {
         return oxidationProducts;
     }
 
-    // Risk assessment and warning helper methods
+    private List<String> searchProductIngredients(String productName, String userEmail) {
+        log.info("🔍 Searching for ingredient list of: {} (TOKENS WILL BE USED)", productName);
+
+        try {
+            WebSearchOptions webSearchOptions = new WebSearchOptions(
+                    SearchContextSize.MEDIUM,
+                    null
+            );
+
+            OpenAiChatOptions options = OpenAiChatOptions.builder()
+                    .webSearchOptions(webSearchOptions)
+                    .build();
+
+            String systemPrompt = """
+                You are a product ingredient researcher. Find the COMPLETE ingredient list 
+                for consumer products from official sources.
+                
+                Response Format:
+                INGREDIENT: [exact chemical name]
+                INGREDIENT: [exact chemical name]
+                """;
+
+            String userPrompt = String.format("""
+                Find the complete ingredient list for: "%s"
+                Use INCI names for cosmetics. List each ingredient starting with "INGREDIENT:"
+                """, productName);
+
+            String fullPrompt = systemPrompt + "\n\n" + userPrompt;
+            int promptTokens = usageTrackingService.estimateTokens(fullPrompt);
+
+            String response = chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userPrompt)
+                    .options(options)
+                    .call()
+                    .content();
+
+            int responseTokens = usageTrackingService.estimateTokens(response);
+            usageTrackingService.trackAnalysis(userEmail, promptTokens + responseTokens);
+
+            return parseIngredientList(response);
+
+        } catch (Exception e) {
+            log.error("Error searching product ingredients for {}: {}", productName, e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    private List<String> parseIngredientList(String response) {
+        List<String> ingredients = new ArrayList<>();
+
+        try {
+            String[] lines = response.split("\n");
+
+            for (String line : lines) {
+                line = line.trim();
+
+                if (line.startsWith("INGREDIENT:")) {
+                    String ingredient = line.substring("INGREDIENT:".length()).trim();
+                    if (!ingredient.isEmpty()) {
+                        ingredients.add(ingredient);
+                    }
+                } else if (line.matches("^\\d+\\.\\s+.*")) {
+                    String ingredient = line.replaceFirst("^\\d+\\.\\s+", "").trim();
+                    if (!ingredient.isEmpty()) {
+                        ingredients.add(ingredient);
+                    }
+                }
+            }
+
+            log.info("Parsed {} ingredients from response", ingredients.size());
+
+        } catch (Exception e) {
+            log.error("Error parsing ingredient list: {}", e.getMessage());
+        }
+
+        return ingredients;
+    }
+
     private Map<String, Object> generateRiskAssessment(List<SideEffect> sideEffects) {
         Map<String, Object> assessment = new HashMap<>();
 
@@ -265,38 +540,42 @@ public class AllergenSearchController {
         if (sideEffects.isEmpty()) return "UNKNOWN";
 
         boolean hasSevere = sideEffects.stream()
-                .anyMatch(effect -> effect.getSeverity().ordinal() >= 3); // SEVERE or LIFE_THREATENING
+                .anyMatch(effect -> effect.getSeverity().ordinal() >= 3);
 
         if (hasSevere) return "HIGH";
 
         boolean hasModerate = sideEffects.stream()
-                .anyMatch(effect -> effect.getSeverity().ordinal() >= 2); // MODERATE
+                .anyMatch(effect -> effect.getSeverity().ordinal() >= 2);
 
         return hasModerate ? "MODERATE" : "LOW";
+    }
+
+    private String determineOverallRisk(int highRiskCount, int totalAnalyzed) {
+        if (highRiskCount > 0) {
+            return "HIGH";
+        } else if (totalAnalyzed > 5) {
+            return "MODERATE";
+        } else {
+            return "LOW";
+        }
     }
 
     private List<String> generateWarnings(ChemicalIdentification chemical, List<SideEffect> sideEffects) {
         List<String> warnings = new ArrayList<>();
 
-        // Check for oxidation products
         if (chemical.getOxidationProducts() != null && !chemical.getOxidationProducts().isEmpty()) {
-            warnings.add("OXIDATION ALERT: This chemical forms allergenic oxidation products when exposed to air or light. " +
-                    "The actual allergen may be different from the listed ingredient.");
+            warnings.add("OXIDATION ALERT: This chemical forms allergenic oxidation products when exposed to air or light.");
         }
 
-        // Check for severe reactions
         boolean hasSevere = sideEffects.stream()
                 .anyMatch(effect -> effect.getSeverity().ordinal() >= 3);
         if (hasSevere) {
-            warnings.add("SEVERE REACTION RISK: This chemical has been associated with severe allergic reactions. " +
-                    "Seek immediate medical attention if symptoms occur.");
+            warnings.add("SEVERE REACTION RISK: This chemical has been associated with severe allergic reactions.");
         }
 
-        // Check for respiratory effects
         boolean hasRespiratory = sideEffects.stream()
                 .anyMatch(effect -> effect.getAffectedBodyAreas().stream()
-                        .anyMatch(area -> area.toLowerCase().contains("respiratory") ||
-                                area.toLowerCase().contains("lung")));
+                        .anyMatch(area -> area.toLowerCase().contains("respiratory")));
         if (hasRespiratory) {
             warnings.add("RESPIRATORY ALERT: May cause breathing difficulties or respiratory sensitization.");
         }
@@ -329,12 +608,32 @@ public class AllergenSearchController {
         return summary;
     }
 
+    private List<String> generateProductRecommendations(int highRiskCount, int totalAnalyzed) {
+        List<String> recommendations = new ArrayList<>();
+
+        if (highRiskCount == 0) {
+            recommendations.add("✓ No high-risk allergens detected in this formulation");
+            recommendations.add("Perform patch test before first use if you have sensitive skin");
+        } else {
+            recommendations.add("⚠ This product contains " + highRiskCount + " high-risk allergen(s)");
+            recommendations.add("Consult with a dermatologist before use if you have known allergies");
+            recommendations.add("Perform a patch test on inner arm for 48 hours before facial application");
+        }
+
+        if (totalAnalyzed > 15) {
+            recommendations.add("Complex formulation with many ingredients - monitor for reactions");
+        }
+
+        recommendations.add("Always check individual ingredient sensitivities before use");
+
+        return recommendations;
+    }
+
     private String getMedicalDisclaimer() {
         return """
                 MEDICAL DISCLAIMER: This information is for educational and research purposes only. 
                 It does not constitute medical advice, diagnosis, or treatment recommendations. 
-                Always consult qualified healthcare professionals for medical decisions. 
-                Individual reactions may vary. In case of allergic reactions, seek immediate medical attention.
+                Always consult qualified healthcare professionals for medical decisions.
                 """;
     }
 }
