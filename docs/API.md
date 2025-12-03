@@ -1,560 +1,490 @@
 # Allergen Intelligence Platform - API Documentation
 
-**Status:** Planning Phase - API Not Yet Implemented
+**Version:** 1.0.0  
+**Status:** Production Ready  
+**Base URL:** `http://localhost:8080/api`
 
-**Base URL:** `http://localhost:8080/api/v1` (planned)
+---
+
+## Table of Contents
+- [Overview](#overview)
+- [Authentication](#authentication)
+- [API Endpoints](#api-endpoints)
+   - [Authentication Endpoints](#authentication-endpoints)
+   - [Allergen Analysis Endpoints](#allergen-analysis-endpoints)
+- [Data Models](#data-models)
+- [Error Handling](#error-handling)
+- [Rate Limiting & Usage Tracking](#rate-limiting--usage-tracking)
+- [Code Examples](#code-examples)
+- [Testing](#testing)
 
 ---
 
 ## Overview
 
-This document outlines the planned REST API for the Allergen Intelligence Platform. The API will analyze product ingredients for potential allergens and identify oxidation products that may cause allergic reactions.
+The Allergen Intelligence Platform provides a REST API for analyzing product ingredients for potential allergens and their oxidation products. The platform features:
 
-**Current State:** Foundation phase - database and Spring Boot setup complete
+- 🔐 **JWT Authentication** with token rotation
+- 💰 **Three-tier caching** (97.5% cost reduction)
+- 📊 **Real-time usage tracking** (tokens, cost, analyses)
+- 🧪 **Automatic oxidation product detection**
+- 🔬 **PubChem chemical data integration**
+- 🤖 **OpenAI-powered allergen research**
 
----
+### Key Features
 
-## Implementation Progress
-
-### ✅ Phase 0: Foundation (Complete)
-- [x] Spring Boot application running
-- [x] PostgreSQL 17 with pgvector configured
-- [x] Database connection verified
-- [x] Vector store schema created
-
-### 🔄 Phase 1: In Progress
-- [ ] PubChem service implementation
-- [ ] Basic REST endpoints
-- [ ] Data models and DTOs
-- [ ] Repository layer
-
-### 📋 Phases 2-7: Planned
-- AI integration with OpenAI
-- Caching layer in pgvector
-- Analysis pipeline
-- Image processing
-- Frontend
+- **Database Cache:** <10ms response, 0 tokens
+- **Vector Cache (pgvector):** ~100ms response, 0 tokens
+- **OpenAI API:** 5-10s response, ~400 tokens per new ingredient
+- **Shared Cache:** Every user's query benefits everyone (network effect)
 
 ---
 
-## Planned API Endpoints
+## Authentication
 
-### Core Endpoints (Design Phase)
+The API uses **JWT (JSON Web Tokens)** with a two-token system:
+- **Access Token:** 1 hour expiration, used for API requests
+- **Refresh Token:** 7 days expiration, used to obtain new access tokens
 
-#### 1. Product Analysis
+### Security Features
+- BCrypt password hashing
+- Stateless session management
+- Token rotation on refresh
+- Secure token storage in PostgreSQL
+
+### Authorization Header
+
+All protected endpoints require:
 ```
-POST /api/v1/allergens/analyze
-```
-
-**Purpose:** Analyze product ingredients for allergens and oxidation products
-
-**Planned Features:**
-- PubChem chemical lookup
-- Oxidation product identification
-- OpenAI-powered research synthesis
-- Response caching in pgvector (to reduce API costs)
-
-**Request Structure (TBD):**
-```json
-{
-  "productName": "string",
-  "ingredients": ["string"],
-  "category": "string (optional)"
-}
-```
-
-**Design Decisions to Make:**
-- Response format based on PubChem data structure
-- How to represent oxidation products
-- Cache hit/miss indication
-- Source attribution format
-
----
-
-#### 2. Chemical Information Lookup
-```
-GET /api/v1/chemical/{name}
-```
-
-**Purpose:** Get detailed chemical information from PubChem
-
-**Status:** Research phase - understanding PubChem API
-
-**Questions to Answer:**
-- What PubChem data do we need?
-- How to handle multiple CAS numbers?
-- Caching strategy for chemical lookups?
-
----
-
-#### 3. Image Analysis (Future)
-```
-POST /api/v1/allergens/analyze-image
-```
-
-**Purpose:** Extract ingredients from product photos
-
-**Phase:** Not started (Phase 5)
-
----
-
-### Health & Monitoring
-
-#### Current Endpoints (Implemented)
-
-```
-GET /actuator/health
-```
-Returns application health status - **Working Now**
-
-**Response:**
-```json
-{
-  "status": "UP"
-}
+Authorization: Bearer {accessToken}
 ```
 
 ---
 
-## Design Considerations
+## API Endpoints
 
-### 1. Caching Strategy
+### Authentication Endpoints
 
-**Goal:** Reduce OpenAI API costs by 99%
+#### 1. Register User
 
-**Planned Implementation:**
-- Store OpenAI responses in pgvector
-- Check cache before making API calls
-- 30-day TTL for cached data
-- Similarity threshold: 0.95 for cache hits
+Create a new user account.
 
-**Cost Impact:**
-- First query: ~$0.002-0.065
-- Cached queries: $0.00
-- Expected savings: >95% during development
-
-### 2. Response Format Philosophy
-
-**Principles:**
-- Include source URLs for all claims
-- Show cache status in development mode
-- Clear error messages
-- Consistent JSON structure
-
-**Example Response Structure (Draft):**
-```json
-{
-  "data": { /* actual response */ },
-  "_meta": {
-    "cached": true/false,
-    "timestamp": "ISO-8601",
-    "apiCalls": 0,
-    "sources": ["url1", "url2"]
-  }
-}
-```
-
-### 3. Error Handling
-
-**Planned Approach:**
-- Standard HTTP status codes
-- Detailed error messages for debugging
-- Graceful degradation when external APIs fail
-
----
-
-## Current Working Endpoints
-
-These endpoints exist for testing during development:
-
-```
-GET /api/test/health
-```
-Returns: "Allergen Intelligence Platform is running!"
-
-```
-GET /api/test/chemical/{name}
-```
-Tests PubChem lookup (not yet implemented)
-
----
-
-## Next Steps
-
-### Week 1: PubChem Integration
-1. Implement PubChem service
-2. Design response DTOs based on actual data
-3. Create basic chemical lookup endpoint
-4. Document data structures
-
-### Week 2: Caching & AI
-1. Implement pgvector caching layer
-2. OpenAI client setup
-3. Design analysis workflow
-4. Test cache effectiveness
-
-### Week 3+: Main Features
-1. Build main analysis endpoint
-2. Add oxidation product detection
-3. Implement RAG pipeline
-4. Finalize API contracts
-
----
-
-## Development Notes
-
-### Questions to Resolve
-
-1. **Data Model:**
-    - What PubChem fields are essential?
-    - How to structure oxidation product relationships?
-    - Best way to represent side effects?
-
-2. **Caching:**
-    - When to invalidate cache?
-    - How to handle partial cache hits?
-    - Cache warming strategy?
-
-3. **Performance:**
-    - Acceptable response time?
-    - Rate limiting strategy?
-    - Batch processing design?
-
----
-
-## Testing Strategy
-
-Once implemented, APIs will be tested with:
-
-```bash
-# Chemical lookup
-curl http://localhost:8080/api/v1/chemical/Limonene
-
-# Product analysis
-curl -X POST http://localhost:8080/api/v1/allergens/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"productName":"Test","ingredients":["Limonene"]}'
-```
-
----
-
-## Documentation Updates
-
-This document will be updated as:
-- [ ] PubChem integration completes (Week 1)
-- [ ] First endpoints are implemented (Week 1)
-- [ ] Caching layer is built (Week 2)
-- [ ] Analysis pipeline is complete (Week 4)
-- [ ] API stabilizes for production (Week 6)
-
----
-
-## References
-
-- [ROADMAP.md](ROADMAP.md) - Detailed development plan
-- [GETTING_STARTED.md](GETTING_STARTED.md) - Setup instructions
-- [PubChem API Docs](https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest)
-- [Spring AI Reference](https://docs.spring.io/spring-ai/reference/)
-
----
-
-**Last Updated:** September 21, 2025  
-**Current Phase:** Foundation complete, starting PubChem integration  
-**Next Milestone:** Basic chemical lookup endpoint
-
-**POST** `/allergens/analyze`
-
-Analyze a product's ingredients for potential allergens and side effects.
+**Endpoint:** `POST /api/auth/register`
 
 **Request Body:**
 ```json
 {
-  "productName": "Citrus Body Lotion",
-  "ingredients": [
-    "Limonene",
-    "Linalool",
-    "Citral"
-  ],
-  "category": "skincare"
+  "email": "user@example.com",
+  "password": "SecurePass123!",
+  "firstName": "John",
+  "lastName": "Doe"
 }
 ```
 
-**Response:**
+**Response:** `200 OK`
 ```json
 {
-  "productName": "Citrus Body Lotion",
-  "overallRisk": "MODERATE",
-  "ingredients": [
-    {
-      "originalName": "Limonene",
-      "chemical": {
-        "id": 1,
-        "commonName": "Limonene",
-        "scientificName": "D-Limonene",
-        "casNumber": "5989-27-5",
-        "iupacName": "1-Methyl-4-(1-methylethenyl)cyclohexene",
-        "chemicalFamily": "Terpene",
-        "isOxidationProduct": false,
-        "oxidationProducts": [
-          "Limonene hydroperoxide",
-          "Limonene oxide"
-        ]
-      },
-      "sideEffects": [
-        {
-          "effectType": "Contact Dermatitis",
-          "severity": "MODERATE",
-          "description": "Can cause allergic skin reactions",
-          "prevalenceRate": 0.15,
-          "affectedBodyAreas": ["skin"],
-          "source": "Journal of Clinical Dermatology",
-          "sourceUrl": "https://example.com/study",
-          "studyEvidence": "15% prevalence in patch test studies"
-        }
-      ],
-      "oxidationProductEffects": [
-        {
-          "effectType": "Allergic Contact Dermatitis",
-          "severity": "HIGH",
-          "description": "Limonene hydroperoxide is a known sensitizer",
-          "prevalenceRate": 0.35,
-          "affectedBodyAreas": ["skin"],
-          "source": "Contact Dermatitis Journal",
-          "sourceUrl": "https://example.com/study2"
-        }
-      ],
-      "riskLevel": "MODERATE"
-    }
-  ],
-  "report": "**Executive Summary**\n\nThis product contains 3 ingredients...",
-  "recommendations": [
-    "Avoid if sensitive to citrus terpenes",
-    "Use fresh products (oxidation increases allergenicity)",
-    "Patch test before full application"
-  ],
-  "generatedAt": "2025-09-21T15:30:00"
+  "message": "User registered successfully"
 }
 ```
 
 **Status Codes:**
-- `200 OK` - Analysis successful
-- `400 Bad Request` - Invalid input
-- `500 Internal Server Error` - Processing error
+- `200 OK` - Registration successful
+- `400 Bad Request` - Invalid input or email already exists
+- `500 Internal Server Error` - Server error
 
 **Example:**
 ```bash
-curl -X POST http://localhost:8080/api/v1/allergens/analyze \
+curl -X POST http://localhost:8080/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "productName": "Citrus Body Lotion",
-    "ingredients": ["Limonene", "Linalool"],
-    "category": "skincare"
+    "email": "user@example.com",
+    "password": "SecurePass123!",
+    "firstName": "John",
+    "lastName": "Doe"
   }'
 ```
 
 ---
 
-### 2. Analyze Product from Image
+#### 2. Login
 
-**POST** `/allergens/analyze-image`
+Authenticate and receive access and refresh tokens.
 
-Extract ingredients from a product image and analyze for allergens.
-
-**Request:**
-- **Method:** POST
-- **Content-Type:** `multipart/form-data`
-
-**Parameters:**
-- `image` (file, required): Product ingredient label photo
-- `productName` (string, optional): Product name
-
-**Response:**
-```json
-{
-  "extractedIngredients": [
-    "Aqua",
-    "Limonene",
-    "Linalool",
-    "Citric Acid"
-  ],
-  "productName": "Citrus Body Lotion",
-  "overallRisk": "MODERATE",
-  "ingredients": [...],
-  "report": "...",
-  "recommendations": [...]
-}
-```
-
-**Example:**
-```bash
-curl -X POST http://localhost:8080/api/v1/allergens/analyze-image \
-  -F "image=@product_label.jpg" \
-  -F "productName=My Product"
-```
-
----
-
-### 3. Get Chemical Information
-
-**GET** `/allergens/chemical/{ingredient}`
-
-Retrieve detailed information about a specific chemical/ingredient.
-
-**Path Parameters:**
-- `ingredient` (string): Chemical name (e.g., "Limonene")
-
-**Response:**
-```json
-{
-  "commonName": "Limonene",
-  "scientificName": "D-Limonene",
-  "casNumber": "5989-27-5",
-  "iupacName": "1-Methyl-4-(1-methylethenyl)cyclohexene",
-  "molecularFormula": "C10H16",
-  "chemicalFamily": "Terpene",
-  "isKnownAllergen": true,
-  "oxidationProducts": [
-    {
-      "name": "Limonene hydroperoxide",
-      "allergenicity": "HIGH",
-      "formationConditions": "Air exposure, UV light"
-    }
-  ],
-  "synonyms": [
-    "D-Limonene",
-    "Dipentene",
-    "Cinene"
-  ],
-  "regulatoryStatus": {
-    "eu": "Required labeling as allergen",
-    "fda": "GRAS (Generally Recognized as Safe)"
-  }
-}
-```
-
-**Example:**
-```bash
-curl http://localhost:8080/api/v1/allergens/chemical/Limonene
-```
-
----
-
-### 4. Semantic Search
-
-**GET** `/allergens/search`
-
-Search for chemicals similar to a query using semantic similarity.
-
-**Query Parameters:**
-- `query` (string, required): Search term
-- `limit` (integer, optional): Maximum results (default: 10)
-- `threshold` (float, optional): Similarity threshold 0-1 (default: 0.7)
-
-**Response:**
-```json
-{
-  "query": "citrus allergen",
-  "results": [
-    {
-      "chemical": "Limonene",
-      "similarityScore": 0.92,
-      "casNumber": "5989-27-5",
-      "isAllergen": true,
-      "summary": "Primary citrus terpene allergen"
-    },
-    {
-      "chemical": "Linalool",
-      "similarityScore": 0.87,
-      "casNumber": "78-70-6",
-      "isAllergen": true,
-      "summary": "Common fragrance allergen"
-    }
-  ]
-}
-```
-
-**Example:**
-```bash
-curl "http://localhost:8080/api/v1/allergens/search?query=citrus%20allergen&limit=5"
-```
-
----
-
-### 5. Batch Analysis
-
-**POST** `/allergens/batch`
-
-Analyze multiple products in a single request.
+**Endpoint:** `POST /api/auth/login`
 
 **Request Body:**
 ```json
 {
-  "products": [
-    {
-      "productName": "Product A",
-      "ingredients": ["Limonene", "Linalool"]
-    },
-    {
-      "productName": "Product B",
-      "ingredients": ["Citral", "Geraniol"]
-    }
-  ]
+  "email": "user@example.com",
+  "password": "SecurePass123!"
 }
 ```
 
-**Response:**
+**Response:** `200 OK`
 ```json
 {
-  "batchId": "batch_abc123",
-  "totalProducts": 2,
-  "results": [
-    {
-      "productName": "Product A",
-      "overallRisk": "MODERATE",
-      "summary": "Contains 2 potential allergens"
-    },
-    {
-      "productName": "Product B",
-      "overallRisk": "LOW",
-      "summary": "Contains 1 mild allergen"
-    }
-  ],
-  "processedAt": "2025-09-21T15:30:00"
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "tokenType": "Bearer",
+  "expiresIn": 3600
 }
+```
+
+**Response Fields:**
+- `accessToken` - JWT token for API requests (1 hour)
+- `refreshToken` - Token for refreshing access token (7 days)
+- `tokenType` - Always "Bearer"
+- `expiresIn` - Access token expiration in seconds
+
+**Status Codes:**
+- `200 OK` - Login successful
+- `401 Unauthorized` - Invalid credentials
+- `500 Internal Server Error` - Server error
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123!"
+  }'
 ```
 
 ---
 
-### 6. Get Oxidation Products
+#### 3. Refresh Token
 
-**GET** `/allergens/chemical/{ingredient}/oxidation-products`
+Obtain a new access token using a refresh token.
 
-Get oxidation products for a specific chemical.
+**Endpoint:** `POST /api/auth/refresh`
 
-**Response:**
+**Request Body:**
 ```json
 {
-  "parentChemical": "Limonene",
-  "oxidationProducts": [
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "tokenType": "Bearer",
+  "expiresIn": 3600
+}
+```
+
+**Behavior:**
+- Old refresh token is automatically revoked
+- New access token is issued
+- New refresh token is issued (token rotation)
+
+**Status Codes:**
+- `200 OK` - Token refreshed successfully
+- `401 Unauthorized` - Invalid or expired refresh token
+- `500 Internal Server Error` - Server error
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refreshToken": "eyJhbGc..."
+  }'
+```
+
+---
+
+#### 4. Get Current User
+
+Get authenticated user information and usage statistics.
+
+**Endpoint:** `GET /api/auth/me`
+
+**Headers:**
+```
+Authorization: Bearer {accessToken}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "email": "user@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "role": "USER",
+  "createdAt": "2025-01-15T10:30:00Z",
+  "usage": {
+    "totalTokensUsed": 26460,
+    "estimatedCost": 0.1323,
+    "analysesRun": 58
+  }
+}
+```
+
+**Response Fields:**
+- `usage.totalTokensUsed` - Cumulative OpenAI tokens consumed
+- `usage.estimatedCost` - Estimated cost in USD based on GPT-4o pricing
+- `usage.analysesRun` - Total number of analyses performed
+
+**Status Codes:**
+- `200 OK` - User data retrieved
+- `401 Unauthorized` - Invalid or expired token
+- `500 Internal Server Error` - Server error
+
+**Example:**
+```bash
+curl http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer eyJhbGc..."
+```
+
+---
+
+### Allergen Analysis Endpoints
+
+#### 5. Analyze Single Ingredient
+
+Analyze a single ingredient for allergen risks and oxidation products.
+
+**Endpoint:** `GET /api/allergen/analyze/{ingredientName}`
+
+**Headers:**
+```
+Authorization: Bearer {accessToken}
+```
+
+**Path Parameters:**
+- `ingredientName` - Name of the ingredient (e.g., "Limonene")
+
+**Response:** `200 OK`
+```json
+{
+  "chemical": {
+    "commonName": "Limonene",
+    "iupacName": "1-Methyl-4-(1-methylethenyl)cyclohexene",
+    "casNumber": "5989-27-5",
+    "pubchemCid": 22311,
+    "molecularFormula": "C10H16",
+    "smiles": "CC1=CCC(CC1)C(=C)C"
+  },
+  "sideEffects": [
     {
-      "name": "Limonene hydroperoxide",
-      "casNumber": "5489-17-0",
-      "allergenicity": "HIGH",
-      "prevalence": 0.35,
-      "formationFactors": [
-        "Air exposure",
-        "UV light",
-        "Temperature",
-        "Time"
+      "effectType": "Allergic Contact Dermatitis",
+      "severity": "MODERATE",
+      "prevalenceRate": 0.05,
+      "population": "Individuals with fragrance sensitivity",
+      "affectedBodyAreas": ["Skin"],
+      "sources": [
+        {
+          "title": "Contact Dermatitis Study",
+          "url": "https://example.com/study",
+          "year": 2023
+        }
       ]
     }
   ],
-  "preventionTips": [
-    "Store in airtight containers",
-    "Avoid heat and light",
-    "Use within 6 months of opening"
-  ]
+  "oxidationProducts": [
+    "Limonene hydroperoxide",
+    "Limonene oxide"
+  ],
+  "riskAssessment": {
+    "riskLevel": "MODERATE",
+    "totalReactionsFound": 3
+  },
+  "warnings": [
+    "⚠️ OXIDATION ALERT: This chemical forms allergenic oxidation products when exposed to air or light."
+  ],
+  "disclaimer": "MEDICAL DISCLAIMER: This information is for educational purposes only. Always consult qualified healthcare professionals for medical decisions."
 }
+```
+
+**Caching Behavior:**
+- ✅ **Database Hit:** <10ms, 0 tokens
+- ✅ **Vector Hit:** ~100ms, 0 tokens (semantic match)
+- ⚠️ **API Call:** 5-10s, ~400 tokens (new ingredient)
+
+**Status Codes:**
+- `200 OK` - Analysis successful
+- `401 Unauthorized` - Invalid/expired token
+- `404 Not Found` - Chemical not found in PubChem
+- `500 Internal Server Error` - Server error
+
+**Example:**
+```bash
+curl http://localhost:8080/api/allergen/analyze/Limonene \
+  -H "Authorization: Bearer eyJhbGc..."
+```
+
+---
+
+#### 6. Analyze Product
+
+Analyze a complete product by name, automatically extracting ingredients.
+
+**Endpoint:** `POST /api/allergen/analyze-product`
+
+**Headers:**
+```
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "productName": "CeraVe Moisturizing Cream"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "productName": "CeraVe Moisturizing Cream",
+  "totalIngredients": 20,
+  "highRiskIngredients": 2,
+  "overallRiskLevel": "MODERATE",
+  "ingredients": [
+    "Cetearyl Alcohol",
+    "Glycerin",
+    "Petrolatum",
+    "Ceramide NP",
+    "..."
+  ],
+  "detailedAnalysis": {
+    "Cetearyl Alcohol": {
+      "chemical": {
+        "commonName": "Cetearyl Alcohol",
+        "iupacName": "Hexadecan-1-ol",
+        "casNumber": "36653-82-4",
+        "molecularFormula": "C16H34O"
+      },
+      "sideEffects": [
+        {
+          "effectType": "Mild Skin Irritation",
+          "severity": "LOW",
+          "prevalenceRate": 0.01
+        }
+      ],
+      "oxidationProducts": [],
+      "riskLevel": "LOW"
+    },
+    "Fragrance": {
+      "chemical": {
+        "commonName": "Fragrance",
+        "iupacName": "Mixed fragrance compounds"
+      },
+      "sideEffects": [
+        {
+          "effectType": "Allergic Contact Dermatitis",
+          "severity": "HIGH",
+          "prevalenceRate": 0.15
+        }
+      ],
+      "oxidationProducts": [
+        "Various oxidation products"
+      ],
+      "riskLevel": "HIGH"
+    }
+  },
+  "recommendations": [
+    "⚠️ This product contains 2 high-risk allergen(s)",
+    "Consult with a dermatologist before use if you have known allergies",
+    "Perform a patch test on inner arm for 48 hours before facial application"
+  ],
+  "disclaimer": "MEDICAL DISCLAIMER: This information is for educational purposes only..."
+}
+```
+
+**Performance:**
+- **First Analysis:** ~4,100 tokens (~$0.021)
+- **Repeat Analysis:** ~100 tokens (~$0.0005)
+- **Cost Savings:** 97.5%
+
+**Status Codes:**
+- `200 OK` - Analysis successful
+- `400 Bad Request` - Invalid product name
+- `401 Unauthorized` - Invalid/expired token
+- `500 Internal Server Error` - Server error or OpenAI API failure
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/allergen/analyze-product \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "productName": "CeraVe Moisturizing Cream"
+  }'
+```
+
+---
+
+#### 7. Batch Ingredient Analysis
+
+Analyze multiple ingredients in a single request.
+
+**Endpoint:** `POST /api/allergen/analyze-batch`
+
+**Headers:**
+```
+Authorization: Bearer {accessToken}
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+[
+  "Limonene",
+  "Linalool",
+  "Citral"
+]
+```
+
+**Response:** `200 OK`
+```json
+{
+  "Limonene": {
+    "chemical": { ... },
+    "sideEffects": [ ... ],
+    "oxidationProducts": [ ... ],
+    "riskLevel": "MODERATE"
+  },
+  "Linalool": {
+    "chemical": { ... },
+    "sideEffects": [ ... ],
+    "oxidationProducts": [ ... ],
+    "riskLevel": "MODERATE"
+  },
+  "Citral": {
+    "chemical": { ... },
+    "sideEffects": [ ... ],
+    "oxidationProducts": [ ... ],
+    "riskLevel": "LOW"
+  },
+  "summary": {
+    "totalIngredients": 3,
+    "highRiskIngredients": 0,
+    "moderateRiskIngredients": 2,
+    "lowRiskIngredients": 1,
+    "overallRiskLevel": "MODERATE"
+  },
+  "disclaimer": "MEDICAL DISCLAIMER: ..."
+}
+```
+
+**Status Codes:**
+- `200 OK` - Batch analysis successful
+- `400 Bad Request` - Invalid ingredient list
+- `401 Unauthorized` - Invalid/expired token
+- `500 Internal Server Error` - Server error
+
+**Example:**
+```bash
+curl -X POST http://localhost:8080/api/allergen/analyze-batch \
+  -H "Authorization: Bearer eyJhbGc..." \
+  -H "Content-Type: application/json" \
+  -d '["Limonene", "Linalool", "Citral"]'
 ```
 
 ---
@@ -565,17 +495,12 @@ Get oxidation products for a specific chemical.
 
 ```typescript
 interface ChemicalIdentification {
-  id: number;
-  commonName: string;
-  scientificName: string;
-  iupacName?: string;
-  casNumber: string;
-  chemicalFamily: string;
-  isOxidationProduct: boolean;
-  synonyms: string[];
-  oxidationProducts: string[];
-  smiles?: string;
-  createdAt: string;
+  commonName: string;          // Common name (e.g., "Limonene")
+  iupacName: string;           // IUPAC systematic name
+  casNumber: string;           // CAS Registry Number
+  pubchemCid: number;          // PubChem Compound ID
+  molecularFormula: string;    // Chemical formula (e.g., "C10H16")
+  smiles: string;              // SMILES notation
 }
 ```
 
@@ -583,167 +508,339 @@ interface ChemicalIdentification {
 
 ```typescript
 interface SideEffect {
-  id: number;
-  effectType: string;
+  effectType: string;                // Type of reaction (e.g., "Contact Dermatitis")
   severity: "LOW" | "MODERATE" | "HIGH" | "SEVERE";
-  description: string;
-  prevalenceRate?: number;
-  affectedBodyAreas: string[];
-  source: string;
-  sourceUrl: string;
-  studyEvidence?: string;
-  createdAt: string;
+  prevalenceRate: number;            // Rate as decimal (0.05 = 5%)
+  population: string;                // Affected population description
+  affectedBodyAreas: string[];       // Body areas affected
+  sources: Source[];                 // Research sources
+}
+
+interface Source {
+  title: string;
+  url: string;
+  year: number;
 }
 ```
 
-### RiskLevel
+### RiskAssessment
 
 ```typescript
-type RiskLevel = "NONE" | "LOW" | "MODERATE" | "HIGH" | "SEVERE";
+interface RiskAssessment {
+  riskLevel: "NONE" | "LOW" | "MODERATE" | "HIGH" | "SEVERE";
+  totalReactionsFound: number;
+}
+```
+
+### ProductAnalysisResponse
+
+```typescript
+interface ProductAnalysisResponse {
+  productName: string;
+  totalIngredients: number;
+  highRiskIngredients: number;
+  overallRiskLevel: "LOW" | "MODERATE" | "HIGH" | "SEVERE";
+  ingredients: string[];
+  detailedAnalysis: {
+    [ingredientName: string]: IngredientAnalysis;
+  };
+  recommendations: string[];
+  disclaimer: string;
+}
+```
+
+### UsageStats
+
+```typescript
+interface UsageStats {
+  totalTokensUsed: number;      // Cumulative OpenAI tokens
+  estimatedCost: number;        // Cost in USD
+  analysesRun: number;          // Total analyses performed
+}
 ```
 
 ---
 
 ## Error Handling
 
-All errors follow this format:
+All errors follow this standard format:
 
 ```json
 {
-  "timestamp": "2025-09-21T15:30:00",
+  "timestamp": "2025-01-15T10:30:00Z",
   "status": 400,
   "error": "Bad Request",
-  "message": "Invalid ingredient name",
-  "path": "/api/v1/allergens/chemical/InvalidName"
+  "message": "Invalid product name",
+  "path": "/api/allergen/analyze-product"
 }
 ```
 
 ### Common Error Codes
 
-| Code | Meaning |
-|------|---------|
-| 400 | Invalid request parameters |
-| 404 | Chemical/resource not found |
-| 429 | Rate limit exceeded |
-| 500 | Internal server error |
-| 503 | External API unavailable (PubChem, OpenAI) |
+| Code | Meaning | Common Causes |
+|------|---------|---------------|
+| `400` | Bad Request | Invalid input, missing required fields |
+| `401` | Unauthorized | Missing/invalid/expired JWT token |
+| `404` | Not Found | Chemical not found in PubChem |
+| `429` | Too Many Requests | Rate limit exceeded (future) |
+| `500` | Internal Server Error | Database error, OpenAI API failure |
+| `503` | Service Unavailable | External API (PubChem/OpenAI) unavailable |
 
----
+### Error Response Examples
 
-## Rate Limiting
-
-**Current:** No rate limiting (development)
-
-**Future Production Limits:**
-- Free tier: 100 requests/hour
-- Basic tier: 1,000 requests/hour
-- Premium tier: 10,000 requests/hour
-
----
-
-## Examples
-
-### Complete Product Analysis Workflow
-
-```bash
-# 1. Analyze product
-curl -X POST http://localhost:8080/api/v1/allergens/analyze \
-  -H "Content-Type: application/json" \
-  -d '{
-    "productName": "Lavender Hand Cream",
-    "ingredients": ["Linalool", "Limonene", "Geraniol"]
-  }' | jq
-
-# 2. Get details on specific allergen
-curl http://localhost:8080/api/v1/allergens/chemical/Linalool | jq
-
-# 3. Check oxidation products
-curl http://localhost:8080/api/v1/allergens/chemical/Linalool/oxidation-products | jq
-
-# 4. Search for similar allergens
-curl "http://localhost:8080/api/v1/allergens/search?query=lavender%20allergen" | jq
+**Invalid Token:**
+```json
+{
+  "timestamp": "2025-01-15T10:30:00Z",
+  "status": 401,
+  "error": "Unauthorized",
+  "message": "JWT token has expired",
+  "path": "/api/allergen/analyze/Limonene"
+}
 ```
 
-### Image Analysis
-
-```bash
-# Upload product photo
-curl -X POST http://localhost:8080/api/v1/allergens/analyze-image \
-  -F "image=@hand_cream_label.jpg" \
-  -F "productName=Lavender Hand Cream" | jq
+**Chemical Not Found:**
+```json
+{
+  "timestamp": "2025-01-15T10:30:00Z",
+  "status": 404,
+  "error": "Not Found",
+  "message": "Chemical 'InvalidName' not found in PubChem database",
+  "path": "/api/allergen/analyze/InvalidName"
+}
 ```
 
 ---
 
-## SDK Examples
+## Rate Limiting & Usage Tracking
+
+### Current Implementation
+
+- ✅ **Token Usage Tracking:** Real-time tracking of OpenAI API consumption
+- ✅ **Cost Estimation:** Automatic cost calculation based on GPT-4o pricing
+- ✅ **Per-User Stats:** Individual usage metrics accessible via `/api/auth/me`
+
+### Future Rate Limits (Planned)
+
+| Tier | Requests/Hour | Monthly Token Limit | Cost |
+|------|---------------|---------------------|------|
+| Free | 100 | 100,000 tokens | $0 |
+| Basic | 1,000 | 1,000,000 tokens | $9.99/mo |
+| Premium | 10,000 | Unlimited | $49.99/mo |
+
+### Cache Benefits
+
+The three-tier caching strategy dramatically reduces costs:
+
+| Scenario | Token Cost | USD Cost | Response Time |
+|----------|-----------|----------|---------------|
+| Database Hit | 0 | $0.000 | <10ms |
+| Vector Hit | 0 | $0.000 | ~100ms |
+| API Call (New) | ~400 | ~$0.002 | 5-10s |
+
+**Example:** Analyzing "CeraVe Cream" (20 ingredients)
+- **First time:** 4,100 tokens ($0.021)
+- **Second time:** 100 tokens ($0.0005)
+- **Savings:** 97.5%
+
+---
+
+## Code Examples
 
 ### JavaScript/TypeScript
 
 ```typescript
-// Using fetch
-async function analyzeProduct(productName: string, ingredients: string[]) {
-  const response = await fetch('http://localhost:8080/api/v1/allergens/analyze', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      productName,
-      ingredients,
-      category: 'skincare'
-    })
-  });
-  
-  return await response.json();
+// API Client Class
+class AllergenAPI {
+  private baseUrl = 'http://localhost:8080/api';
+  private accessToken: string | null = null;
+
+  // Login
+  async login(email: string, password: string) {
+    const response = await fetch(`${this.baseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password })
+    });
+    
+    const data = await response.json();
+    this.accessToken = data.accessToken;
+    return data;
+  }
+
+  // Analyze Product
+  async analyzeProduct(productName: string) {
+    const response = await fetch(`${this.baseUrl}/allergen/analyze-product`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.accessToken}`
+      },
+      body: JSON.stringify({ productName })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    return await response.json();
+  }
+
+  // Get Usage Stats
+  async getUsage() {
+    const response = await fetch(`${this.baseUrl}/auth/me`, {
+      headers: {
+        'Authorization': `Bearer ${this.accessToken}`
+      }
+    });
+    
+    const data = await response.json();
+    return data.usage;
+  }
 }
 
 // Usage
-const result = await analyzeProduct('My Product', ['Limonene', 'Linalool']);
-console.log(result.overallRisk);
+const api = new AllergenAPI();
+
+await api.login('user@example.com', 'password123');
+const analysis = await api.analyzeProduct('CeraVe Cream');
+console.log(`Risk Level: ${analysis.overallRiskLevel}`);
+
+const usage = await api.getUsage();
+console.log(`Tokens Used: ${usage.totalTokensUsed}`);
+console.log(`Estimated Cost: $${usage.estimatedCost}`);
 ```
 
 ### Python
 
 ```python
 import requests
+from typing import Optional
 
-def analyze_product(product_name: str, ingredients: list):
-    url = "http://localhost:8080/api/v1/allergens/analyze"
-    payload = {
-        "productName": product_name,
-        "ingredients": ingredients,
-        "category": "skincare"
-    }
+class AllergenAPI:
+    def __init__(self, base_url: str = "http://localhost:8080/api"):
+        self.base_url = base_url
+        self.access_token: Optional[str] = None
     
-    response = requests.post(url, json=payload)
-    return response.json()
+    def login(self, email: str, password: str):
+        """Authenticate and store access token"""
+        response = requests.post(
+            f"{self.base_url}/auth/login",
+            json={"email": email, "password": password}
+        )
+        response.raise_for_status()
+        
+        data = response.json()
+        self.access_token = data["accessToken"]
+        return data
+    
+    def analyze_product(self, product_name: str):
+        """Analyze a product for allergens"""
+        response = requests.post(
+            f"{self.base_url}/allergen/analyze-product",
+            headers={
+                "Authorization": f"Bearer {self.access_token}",
+                "Content-Type": "application/json"
+            },
+            json={"productName": product_name}
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    def get_usage(self):
+        """Get usage statistics"""
+        response = requests.get(
+            f"{self.base_url}/auth/me",
+            headers={"Authorization": f"Bearer {self.access_token}"}
+        )
+        response.raise_for_status()
+        return response.json()["usage"]
 
-# Usage
-result = analyze_product("My Product", ["Limonene", "Linalool"])
-print(f"Risk Level: {result['overallRisk']}")
+# Usage Example
+api = AllergenAPI()
+
+# Login
+api.login("user@example.com", "password123")
+
+# Analyze product
+analysis = api.analyze_product("CeraVe Moisturizing Cream")
+print(f"Product: {analysis['productName']}")
+print(f"Risk Level: {analysis['overallRiskLevel']}")
+print(f"High Risk Ingredients: {analysis['highRiskIngredients']}")
+
+# Check usage
+usage = api.get_usage()
+print(f"Tokens Used: {usage['totalTokensUsed']}")
+print(f"Cost: ${usage['estimatedCost']:.4f}")
 ```
 
-### cURL
+### cURL Complete Workflow
 
 ```bash
 #!/bin/bash
 
-# Function to analyze product
-analyze_product() {
-  local product_name="$1"
-  shift
-  local ingredients="$@"
-  
-  curl -X POST http://localhost:8080/api/v1/allergens/analyze \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"productName\": \"$product_name\",
-      \"ingredients\": [\"$(echo $ingredients | sed 's/ /","/g')\"]
-    }"
-}
+BASE_URL="http://localhost:8080/api"
 
-# Usage
-analyze_product "My Product" "Limonene" "Linalool"
+# 1. Register
+echo "=== Registering User ==="
+curl -X POST "$BASE_URL/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test123!",
+    "firstName": "Test",
+    "lastName": "User"
+  }'
+
+echo -e "\n"
+
+# 2. Login
+echo "=== Logging In ==="
+LOGIN_RESPONSE=$(curl -s -X POST "$BASE_URL/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test123!"
+  }')
+
+TOKEN=$(echo $LOGIN_RESPONSE | jq -r '.accessToken')
+echo "Token: ${TOKEN:0:20}..."
+
+echo -e "\n"
+
+# 3. Analyze Product
+echo "=== Analyzing Product ==="
+curl -X POST "$BASE_URL/allergen/analyze-product" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"productName": "Vaseline Original"}' \
+  | jq '.overallRiskLevel, .totalIngredients, .highRiskIngredients'
+
+echo -e "\n"
+
+# 4. Check Usage Stats
+echo "=== Usage Statistics ==="
+curl "$BASE_URL/auth/me" \
+  -H "Authorization: Bearer $TOKEN" \
+  | jq '.usage'
+
+echo -e "\n"
+
+# 5. Analyze Same Product Again (Test Caching)
+echo "=== Re-analyzing (Cache Test) ==="
+curl -X POST "$BASE_URL/allergen/analyze-product" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"productName": "Vaseline Original"}' \
+  | jq '.overallRiskLevel'
+
+echo -e "\n"
+
+# 6. Check Usage Again (Should see minimal token increase)
+echo "=== Usage After Cache Hit ==="
+curl "$BASE_URL/auth/me" \
+  -H "Authorization: Bearer $TOKEN" \
+  | jq '.usage'
 ```
 
 ---
@@ -752,103 +849,284 @@ analyze_product "My Product" "Limonene" "Linalool"
 
 ### Postman Collection
 
-Import this collection to test the API:
+Save this as `AllergenAPI.postman_collection.json`:
 
 ```json
 {
   "info": {
-    "name": "Allergen Intelligence Platform",
+    "name": "Allergen Intelligence Platform API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
-  "item": [
-    {
-      "name": "Analyze Product",
-      "request": {
-        "method": "POST",
-        "url": "{{baseUrl}}/allergens/analyze",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"productName\": \"Test Product\",\n  \"ingredients\": [\"Limonene\"]\n}"
-        }
-      }
-    }
-  ],
   "variable": [
     {
       "key": "baseUrl",
-      "value": "http://localhost:8080/api/v1"
+      "value": "http://localhost:8080/api"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"Test123!\",\n  \"firstName\": \"Test\",\n  \"lastName\": \"User\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('accessToken', pm.response.json().accessToken);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"Test123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/me",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Allergen Analysis",
+      "item": [
+        {
+          "name": "Analyze Single Ingredient",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/allergen/analyze/Limonene",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Analyze Product",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/allergen/analyze-product",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productName\": \"CeraVe Moisturizing Cream\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Batch Analysis",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/allergen/analyze-batch",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\"Limonene\", \"Linalool\", \"Citral\"]",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ]
 }
 ```
 
-### Test Data
+### Test Scenarios
 
-```json
-{
-  "testProducts": [
-    {
-      "name": "Simple Test",
-      "ingredients": ["Limonene"],
-      "expectedRisk": "LOW"
-    },
-    {
-      "name": "Multiple Allergens",
-      "ingredients": ["Limonene", "Linalool", "Citral"],
-      "expectedRisk": "MODERATE"
-    },
-    {
-      "name": "High Risk",
-      "ingredients": ["Limonene hydroperoxide", "Linalool oxide"],
-      "expectedRisk": "HIGH"
-    }
-  ]
-}
+#### 1. Cache Effectiveness Test
+
+```bash
+# First analysis (no cache)
+time curl -X POST http://localhost:8080/api/allergen/analyze-product \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"productName":"Vaseline Original"}'
+# Expected: ~10-15 seconds, ~4,000 tokens
+
+# Second analysis (fully cached)
+time curl -X POST http://localhost:8080/api/allergen/analyze-product \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"productName":"Vaseline Original"}'
+# Expected: <1 second, ~100 tokens
 ```
+
+#### 2. Token Tracking Test
+
+```bash
+# Get initial usage
+BEFORE=$(curl -s http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer $TOKEN" | jq '.usage.totalTokensUsed')
+
+# Perform analysis
+curl -s -X POST http://localhost:8080/api/allergen/analyze-product \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"productName":"Test Product"}' > /dev/null
+
+# Get new usage
+AFTER=$(curl -s http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer $TOKEN" | jq '.usage.totalTokensUsed')
+
+echo "Tokens used: $((AFTER - BEFORE))"
+```
+
+---
+
+## Performance Benchmarks
+
+### Response Time Distribution
+
+| Endpoint | Cache Hit | Cache Miss | Avg |
+|----------|-----------|------------|-----|
+| `/analyze/{ingredient}` | <10ms | 5-10s | 500ms |
+| `/analyze-product` | 100-500ms | 30-60s | 5s |
+| `/analyze-batch` (3) | 30-100ms | 15-30s | 3s |
+
+### Cost Analysis
+
+**Scenario:** Analyzing 100 products with 20 ingredients each
+
+**Without Caching:**
+- Token cost: 100 × 4,100 = 410,000 tokens
+- USD cost: ~$2.05
+
+**With Caching (80% hit rate):**
+- Token cost: (20 × 4,100) + (80 × 100) = 90,000 tokens
+- USD cost: ~$0.45
+- **Savings: 78%**
 
 ---
 
 ## Changelog
 
-### Version 1.0.0 (Current - Development)
-- Initial API design
-- Basic product analysis
-- Chemical lookup
-- Image processing (planned)
-- Semantic search (planned)
+### Version 1.0.0 (Current)
+- ✅ JWT authentication with token rotation
+- ✅ Three-tier caching (database, vector, API)
+- ✅ Real-time usage tracking
+- ✅ PubChem integration
+- ✅ OpenAI GPT-4o integration with web search
+- ✅ Oxidation product detection
+- ✅ Batch analysis support
+- ✅ Product name-based analysis
 
-### Planned Features (v1.1.0)
-- User authentication
-- Rate limiting
-- Batch processing
-- Caching improvements
-- Real-time notifications
+### Planned (v1.1.0)
+- 🔄 Rate limiting per user tier
+- 🔄 Image upload and OCR for ingredient extraction
+- 🔄 Elasticsearch for full-text ingredient search
+- 🔄 GraphQL API alternative
+- 🔄 WebSocket support for real-time updates
 
 ---
 
-## Support
+## Support & Resources
 
 ### Documentation
-- **Full Docs:** [README.md](README.md)
-- **Setup Guide:** [GETTING_STARTED.md](GETTING_STARTED.md)
-- **Roadmap:** [ROADMAP.md](ROADMAP.md)
+- **Architecture:** [docs/ARCHITECTURE.md](ARCHITECTURE.md)
+- **Setup Guide:** [docs/GETTING_STARTED.md](GETTING_STARTED.md)
+- **Roadmap:** [docs/ROADMAP.md](ROADMAP.md)
+- **Main README:** [README.md](../README.md)
+
+### External APIs
+- **PubChem API:** https://pubchem.ncbi.nlm.nih.gov/docs/pug-rest
+- **OpenAI API:** https://platform.openai.com/docs/api-reference
 
 ### Contact
-- **Issues:** GitHub Issues
-- **Email:** support@allergen-intelligence.com (planned)
-- **Discord:** Coming soon
+- **GitHub:** https://github.com/mattbixby123/allergen-intelligence
+- **Issues:** https://github.com/mattbixby123/allergen-intelligence/issues
+- **Author:** Matthew Bixby
 
 ---
 
-## Disclaimer
+## Medical Disclaimer
 
-⚠️ **NOT MEDICAL ADVICE**: This API is for educational and research purposes only. Always consult qualified healthcare professionals for medical decisions. Do not rely on this API for allergy diagnosis or treatment.
+⚠️ **THIS TOOL IS FOR EDUCATIONAL AND RESEARCH PURPOSES ONLY.**
 
-The information provided may be incomplete, outdated, or incorrect. Always verify with authoritative medical sources and professionals.
+**Do NOT use for:**
+- ❌ Self-diagnosis
+- ❌ Medical treatment decisions
+- ❌ Replacing professional medical advice
+
+**Always:**
+- ✅ Consult qualified healthcare professionals
+- ✅ Verify information with authoritative sources
+- ✅ Perform proper allergy testing with medical supervision
+
+**Limitations:**
+- Information may be incomplete, outdated, or incorrect
+- AI-generated content can contain errors
+- Ingredient lists may not reflect current product formulations
+- Allergen research is constantly evolving
+
+**This software is provided "as is" without warranty of any kind.**
 
 ---
 
-**Last Updated:** September 21, 2025  
-**API Version:** 1.0.0-dev  
-**Spring Boot Version:** 3.5.6  
-**Spring AI Version:** 1.0.2
+**Last Updated:** December 2025  
+**API Version:** 1.0.0  
+**Spring Boot:** 3.5.6  
+**Spring AI:** 1.0.2  
+**Author:** Matthew Bixby
