@@ -1,239 +1,317 @@
 # Getting Started - Allergen Intelligence Platform
 
-Complete setup guide for local development environment.
+Complete setup guide for the production-ready Allergen Intelligence Platform with JWT authentication, three-tier caching, and AI-powered allergen analysis.
+
+---
+
+## Quick Start
+
+```bash
+# 1. Clone repository
+git clone https://github.com/mattbixby123/allergen-intelligence.git
+cd allergen-intelligence
+
+# 2. Set up database
+createdb allergen_db
+psql -d allergen_db -c "CREATE EXTENSION vector"
+
+# 3. Configure API key
+export OPENAI_API_KEY="sk-proj-your-key-here"
+
+# 4. Generate JWT secret
+export JWT_SECRET=$(openssl rand -base64 64)
+
+# 5. Run application
+mvn spring-boot:run
+
+# 6. Test it works
+curl http://localhost:8080/actuator/health
+```
+
+**Expected result:** Application running on port 8080 with health check responding.
+
+---
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Database Setup](#database-setup)
+- [API Keys & Configuration](#api-keys--configuration)
+- [Build and Run](#build-and-run)
+- [First API Request](#first-api-request)
+- [Testing](#testing)
+- [Development Tools](#development-tools)
+- [Troubleshooting](#troubleshooting)
+
+---
 
 ## Prerequisites
 
 ### Required Software
 
-**Java Development Kit 21+**
+| Software | Version | Purpose |
+|----------|---------|---------|
+| **Java JDK** | 21+ | Application runtime |
+| **Maven** | 3.8+ | Build tool & dependency management |
+| **PostgreSQL** | 15+ | Primary database |
+| **Git** | Latest | Version control |
+
+### Installation
+
+<details>
+<summary><b>macOS (using Homebrew)</b></summary>
+
 ```bash
-# macOS (using Homebrew)
-brew install openjdk@21
+# Install all prerequisites
+brew install openjdk@21 maven postgresql@17 git
 
-# Ubuntu/Debian
-sudo apt update
-sudo apt install openjdk-21-jdk
-
-# Windows - Download from:
-# https://adoptium.net/
-
-# Verify installation
-java -version
-# Should output: openjdk version "21.x.x"
-```
-
-**Maven 3.8+**
-```bash
-# macOS
-brew install maven
-
-# Ubuntu/Debian
-sudo apt install maven
-
-# Windows - Download from:
-# https://maven.apache.org/download.cgi
-
-# Verify
-mvn -version
-```
-
-**PostgreSQL 15+**
-```bash
-# macOS
-brew install postgresql@17
+# Start PostgreSQL
 brew services start postgresql@17
 
-# Ubuntu/Debian
-sudo apt install postgresql-17 postgresql-contrib
-sudo systemctl start postgresql
-
-# Windows - Download from:
-# https://www.postgresql.org/download/windows/
-
-# Verify
-psql --version
+# Verify installations
+java -version    # Should show: openjdk version "21.x.x"
+mvn -version     # Should show: Apache Maven 3.x.x
+psql --version   # Should show: psql (PostgreSQL) 17.x
+git --version    # Should show: git version 2.x.x
 ```
+</details>
 
-**Git**
+<details>
+<summary><b>Ubuntu/Debian</b></summary>
+
 ```bash
-# macOS
-brew install git
+# Update package list
+sudo apt update
 
-# Ubuntu/Debian
+# Install Java 21
+sudo apt install openjdk-21-jdk
+
+# Install Maven
+sudo apt install maven
+
+# Install PostgreSQL 17
+sudo apt install postgresql-17 postgresql-contrib
+
+# Install Git
 sudo apt install git
 
-# Windows - Download from:
-# https://git-scm.com/download/win
+# Start PostgreSQL
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
 
-# Verify
+# Verify installations
+java -version
+mvn -version
+psql --version
 git --version
 ```
+</details>
 
-**Docker (Optional)**
-```bash
-# macOS
-brew install docker
+<details>
+<summary><b>Windows</b></summary>
 
-# Ubuntu/Debian
-sudo apt install docker.io
+**Java 21:**
+1. Download from [Adoptium](https://adoptium.net/)
+2. Run installer and add to PATH
 
-# Windows - Download Docker Desktop from:
-# https://www.docker.com/products/docker-desktop/
+**Maven:**
+1. Download from [Apache Maven](https://maven.apache.org/download.cgi)
+2. Extract and add `bin` directory to PATH
+
+**PostgreSQL:**
+1. Download from [PostgreSQL.org](https://www.postgresql.org/download/windows/)
+2. Run installer and remember your password
+
+**Git:**
+1. Download from [git-scm.com](https://git-scm.com/download/win)
+2. Run installer with default settings
+
+**Verify in PowerShell:**
+```powershell
+java -version
+mvn -version
+psql --version
+git --version
 ```
+</details>
 
 ---
 
 ## Database Setup
 
-### Option A: Local PostgreSQL (Recommended for Development)
+### Step 1: Create Database
 
-**1. Create Database**
 ```bash
-# macOS (using peer authentication)
+# Create database
 createdb allergen_db
 
-# Linux/Windows (with password)
+# If permission issues (Linux/Windows):
 sudo -u postgres createdb allergen_db
 ```
 
-**2. Install pgvector Extension**
-```bash
-# macOS
-psql -d allergen_db -c "CREATE EXTENSION vector"
+### Step 2: Install pgvector Extension
 
-# Linux/Windows
-sudo -u postgres psql -d allergen_db -c "CREATE EXTENSION vector"
+The platform uses pgvector for semantic caching (97.5% cost reduction):
+
+```bash
+# Install extension
+psql -d allergen_db -c "CREATE EXTENSION vector"
 
 # Verify installation
 psql -d allergen_db -c "SELECT * FROM pg_extension WHERE extname = 'vector'"
 ```
 
-**3. Configure Connection**
-```bash
-# macOS (peer authentication - no password needed)
-export DB_USERNAME=$(whoami)
-# DB_PASSWORD not needed
-
-# Linux/Windows
-export DB_USERNAME=postgres
-export DB_PASSWORD=your_password
+**Expected output:**
+```
+ oid  | extname | extowner | extnamespace | extrelocatable | extversion
+------+---------+----------+--------------+----------------+------------
+ xxxxx| vector  |       10 |         2200 | f              | 0.5.1
 ```
 
-### Option B: Docker PostgreSQL with pgvector
+### Step 3: Verify Connection
 
 ```bash
-# Pull and run PostgreSQL with pgvector pre-installed
+# Test database connection
+psql -d allergen_db
+
+# Inside psql:
+\dt                # List tables (should be empty initially)
+\dx                # List extensions (should show 'vector')
+\q                 # Exit
+```
+
+### Alternative: Docker Setup
+
+If you prefer Docker:
+
+```bash
+# Run PostgreSQL with pgvector pre-installed
 docker run -d \
   --name allergen-postgres \
   -e POSTGRES_DB=allergen_db \
   -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=your_password \
+  -e POSTGRES_PASSWORD=postgres \
   -p 5432:5432 \
   ankane/pgvector
 
-# Verify container is running
+# Verify it's running
 docker ps | grep allergen-postgres
-
-# Connect to database
-docker exec -it allergen-postgres psql -U postgres -d allergen_db
-
-# In psql, verify vector extension
-\dx
-\q
 ```
 
 ---
 
-## API Keys Setup
+## API Keys & Configuration
 
-### OpenAI API Key (Required)
+### 1. OpenAI API Key (Required)
 
-1. **Create Account**: Go to https://platform.openai.com/signup
-2. **Navigate to API Keys**: https://platform.openai.com/api-keys
-3. **Create Key**: Click "Create new secret key"
-4. **Name It**: e.g., "Allergen Intelligence Dev"
-5. **Copy Key**: Save it immediately (you won't see it again!)
+The platform uses OpenAI GPT-4o for allergen research.
 
-**Set Environment Variable:**
+**Get your API key:**
+1. Visit [OpenAI Platform](https://platform.openai.com/signup)
+2. Navigate to [API Keys](https://platform.openai.com/api-keys)
+3. Click "Create new secret key"
+4. Name it: "Allergen Intelligence Dev"
+5. **Copy and save immediately** (you won't see it again!)
+
+**Set environment variable:**
+
 ```bash
 # Add to ~/.bashrc, ~/.zshrc, or ~/.bash_profile
 export OPENAI_API_KEY="sk-proj-your-actual-key-here"
 
-# Reload shell
-source ~/.zshrc  # or ~/.bashrc
-```
+# Reload shell configuration
+source ~/.zshrc  # or source ~/.bashrc
 
-**Verify:**
-```bash
+# Verify
 echo $OPENAI_API_KEY
-# Should output your key
 ```
 
-### NCBI API Key (Optional - for PubChem rate limit improvements)
-
-1. **Register**: https://www.ncbi.nlm.nih.gov/account/
-2. **Get API Key**: Settings → API Key Management
-3. **Set Variable**:
-```bash
-export NCBI_API_KEY="your-ncbi-key"
+**Windows (PowerShell):**
+```powershell
+[System.Environment]::SetEnvironmentVariable('OPENAI_API_KEY', 'sk-proj-your-key', 'User')
 ```
 
----
+### 2. JWT Secret Key (Required)
 
-## Project Setup
-
-### Clone Repository
+Generate a secure secret for JWT token signing:
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/allergen-intelligence.git
-cd allergen-intelligence
+# Generate 64-byte random key
+export JWT_SECRET=$(openssl rand -base64 64)
 
-# Verify you're in the right directory
-ls -la
-# Should see: pom.xml, src/, README.md, etc.
+# Make it permanent (add to ~/.zshrc or ~/.bashrc)
+echo "export JWT_SECRET=\"$(openssl rand -base64 64)\"" >> ~/.zshrc
+source ~/.zshrc
+
+# Verify
+echo $JWT_SECRET
 ```
 
-### Configure Application
+**Windows (PowerShell):**
+```powershell
+$secret = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | % {[char]$_})
+[System.Environment]::SetEnvironmentVariable('JWT_SECRET', $secret, 'User')
+```
 
-**Create `.env` file** (for local development):
+### 3. Database Configuration (Optional)
+
+If using non-default database settings:
+
 ```bash
-# In project root directory
-cat > .env << EOF
-# Database Configuration
-DB_USERNAME=$(whoami)
-# DB_PASSWORD= (leave empty for macOS peer auth)
-DATABASE_URL=jdbc:postgresql://localhost:5432/allergen_db
-
-# OpenAI Configuration
-OPENAI_API_KEY=sk-proj-your-actual-key-here
-
-# Application Settings
-SPRING_PROFILES_ACTIVE=dev
-SERVER_PORT=8080
-EOF
+export DB_USERNAME=your_username
+export DB_PASSWORD=your_password
+export DATABASE_URL=jdbc:postgresql://localhost:5432/allergen_db
 ```
 
-**Update application.properties** (already configured in repository):
+### 4. Application Configuration File
 
-Located at: `src/main/resources/application.properties`
+Create `src/main/resources/application-local.yml` for local development:
 
-Key settings to verify:
-```properties
-# Database connection (adjust if using different setup)
-spring.datasource.url=jdbc:postgresql://localhost:5432/allergen_db
-spring.datasource.username=${DB_USERNAME:your-username}
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/allergen_db
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+  
+ai:
+  openai:
+    api-key: ${OPENAI_API_KEY}
+    chat:
+      options:
+        model: gpt-4o
 
-# OpenAI API key
-spring.ai.openai.api-key=${OPENAI_API_KEY}
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: 3600000          # 1 hour in milliseconds
+  refresh-expiration: 604800000 # 7 days in milliseconds
+
+logging:
+  level:
+    com.matthewbixby.allergen: DEBUG
 ```
 
 ---
 
 ## Build and Run
 
-### First Time Setup
+### Clone Repository
+
+```bash
+# Clone the repository
+git clone https://github.com/mattbixby123/allergen-intelligence.git
+cd allergen-intelligence
+
+# Verify project structure
+ls -la
+# Should see: pom.xml, src/, README.md, docs/, etc.
+```
+
+### Build Project
 
 ```bash
 # Install dependencies and build
@@ -241,170 +319,251 @@ mvn clean install
 
 # Expected output:
 # [INFO] BUILD SUCCESS
-# [INFO] Total time: 20-30 seconds
+# [INFO] Total time: 30-60 seconds
+```
+
+**If build fails:**
+```bash
+# Clear Maven cache and retry
+mvn clean
+mvn dependency:purge-local-repository
+mvn clean install -U
 ```
 
 ### Run Application
 
-**Option 1: Using Maven (Recommended for Development)**
+**Option 1: Maven (Recommended for Development)**
 ```bash
 mvn spring-boot:run
 
 # With specific profile
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-**Option 2: Using JAR File**
+**Option 2: JAR File**
 ```bash
 # Build JAR
-mvn clean package
+mvn clean package -DskipTests
 
 # Run JAR
 java -jar target/intelligence-0.0.1-SNAPSHOT.jar
 ```
 
-**Option 3: Using IDE**
+**Option 3: IDE**
 
-**IntelliJ IDEA:**
-1. Import project as Maven project
-2. Install Lombok plugin (File → Settings → Plugins)
-3. Enable annotation processing (Settings → Build → Compiler → Annotation Processors)
-4. Right-click `AllergenIntelligenceApplication.java`
-5. Select "Run" or "Debug"
+<details>
+<summary><b>IntelliJ IDEA</b></summary>
 
-**VS Code:**
-1. Install "Java Extension Pack"
-2. Install "Spring Boot Extension Pack"
-3. Open project folder
-4. Press F5 or use Run → Start Debugging
+1. Open project: **File → Open** → Select `allergen-intelligence` folder
+2. Wait for Maven import to complete
+3. Install Lombok plugin: **File → Settings → Plugins → Search "Lombok"**
+4. Enable annotation processing: **Settings → Build, Execution, Deployment → Compiler → Annotation Processors** → Check "Enable annotation processing"
+5. Find `AllergenIntelligenceApplication.java` in `src/main/java`
+6. Right-click → **Run 'AllergenIntelligenceApplication'**
+</details>
 
----
+<details>
+<summary><b>VS Code</b></summary>
 
-## Verify Installation
+1. Install extensions:
+   - Extension Pack for Java
+   - Spring Boot Extension Pack
+   - Lombok Annotations Support
+2. Open project folder
+3. Wait for Java extension to load
+4. Press **F5** or click **Run → Start Debugging**
+</details>
 
-### 1. Check Application Started
+### Verify Application Started
 
 Look for this in console output:
+
 ```
-Started AllergenIntelligenceApplication in X.XXX seconds
-```
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::        (v3.5.6)
 
-### 2. Test Health Endpoint
-
-```bash
-curl http://localhost:8080/api/test/health
-
-# Expected response:
-# "Allergen Intelligence Platform is running!"
-```
-
-### 3. Test PubChem Integration
-
-```bash
-curl http://localhost:8080/api/test/chemical/Limonene
-
-# Expected response (JSON):
-# {
-#   "commonName": "Limonene",
-#   "casNumber": "5989-27-5",
-#   "iupacName": "1-Methyl-4-(1-methylethenyl)cyclohexene"
-# }
+2025-01-15 10:30:00.000  INFO --- [main] AllergenIntelligenceApplication : Started AllergenIntelligenceApplication in 5.234 seconds
 ```
 
-### 4. Verify Database Connection
-
-```bash
-# Connect to database
-psql -d allergen_db
-
-# List tables
-\dt
-
-# Should see:
-# - chemical_identifications
-# - side_effects
-# - allergen.vector_store
-# (and related junction tables)
-
-# Exit
-\q
-```
-
-### 5. Check API Documentation
-
-Open browser to:
-```
-http://localhost:8080/swagger-ui.html
-```
-
-Should see interactive API documentation.
+**Application is now running on:** `http://localhost:8080`
 
 ---
 
-## Development Workflow
+## First API Request
 
-### Daily Development Routine
+Let's verify everything works by making your first API requests!
+
+### Step 1: Check Health
 
 ```bash
-# 1. Start PostgreSQL (if not using Docker)
-brew services start postgresql@17  # macOS
-sudo systemctl start postgresql    # Linux
-
-# 2. Pull latest changes
-git pull origin main
-
-# 3. Run application
-mvn spring-boot:run
-
-# 4. Make changes, test, commit
-git add .
-git commit -m "feat: add new feature"
-git push
+curl http://localhost:8080/actuator/health
 ```
 
-### Hot Reload Development
-
-**Enable Spring Boot DevTools** (already in pom.xml):
-```xml
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-devtools</artifactId>
-    <optional>true</optional>
-</dependency>
+**Expected Response:**
+```json
+{
+  "status": "UP"
+}
 ```
 
-Changes to Java files will automatically reload the application.
+### Step 2: Register a User
 
----
-
-## Project Structure
-
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test123!",
+    "firstName": "Test",
+    "lastName": "User"
+  }'
 ```
-allergen-intelligence/
-├── src/
-│   ├── main/
-│   │   ├── java/com/allergen/intelligence/
-│   │   │   ├── AllergenIntelligenceApplication.java  # Main entry point
-│   │   │   ├── config/           # Configuration classes
-│   │   │   ├── controller/       # REST endpoints
-│   │   │   ├── service/          # Business logic
-│   │   │   ├── model/            # JPA entities
-│   │   │   ├── repository/       # Database access
-│   │   │   └── dto/              # Request/response objects
-│   │   └── resources/
-│   │       ├── application.properties  # Main config
-│   │       └── application-dev.properties  # Dev config
-│   └── test/
-│       └── java/com/allergen/intelligence/
-│           ├── service/          # Service tests
-│           ├── controller/       # API tests
-│           └── integration/      # Integration tests
-├── docs/                         # Documentation
-├── pom.xml                       # Maven dependencies
-├── .gitignore                    # Git ignore rules
-├── README.md                     # Project overview
-└── LICENSE                       # MIT License
+
+**Expected Response:**
+```json
+{
+  "message": "User registered successfully"
+}
 ```
+
+### Step 3: Login
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "Test123!"
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "tokenType": "Bearer",
+  "expiresIn": 3600
+}
+```
+
+**Save your access token:**
+```bash
+export TOKEN="your-access-token-here"
+```
+
+### Step 4: Analyze Your First Ingredient
+
+```bash
+curl http://localhost:8080/api/allergen/analyze/Limonene \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected Response:**
+```json
+{
+  "chemical": {
+    "commonName": "Limonene",
+    "iupacName": "1-Methyl-4-(1-methylethenyl)cyclohexene",
+    "casNumber": "5989-27-5",
+    "pubchemCid": 22311,
+    "molecularFormula": "C10H16",
+    "smiles": "CC1=CCC(CC1)C(=C)C"
+  },
+  "sideEffects": [
+    {
+      "effectType": "Allergic Contact Dermatitis",
+      "severity": "MODERATE",
+      "prevalenceRate": 0.05,
+      "population": "Individuals with fragrance sensitivity",
+      "affectedBodyAreas": ["Skin"]
+    }
+  ],
+  "oxidationProducts": [
+    "Limonene hydroperoxide",
+    "Limonene oxide"
+  ],
+  "riskAssessment": {
+    "riskLevel": "MODERATE",
+    "totalReactionsFound": 3
+  },
+  "warnings": [
+    "⚠️ OXIDATION ALERT: This chemical forms allergenic oxidation products when exposed to air or light."
+  ]
+}
+```
+
+🎉 **Success!** Your first allergen analysis is complete!
+
+**Note:** First analysis takes ~10 seconds (OpenAI API call). Repeat analysis takes <1 second (cache hit)!
+
+### Step 5: Analyze a Complete Product
+
+```bash
+curl -X POST http://localhost:8080/api/allergen/analyze-product \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "productName": "Vaseline Original"
+  }'
+```
+
+**Expected Response:**
+```json
+{
+  "productName": "Vaseline Original",
+  "totalIngredients": 1,
+  "highRiskIngredients": 0,
+  "overallRiskLevel": "LOW",
+  "ingredients": ["Petrolatum"],
+  "detailedAnalysis": {
+    "Petrolatum": {
+      "chemical": { ... },
+      "sideEffects": [ ... ],
+      "riskLevel": "LOW"
+    }
+  },
+  "recommendations": [
+    "This product contains 0 high-risk allergen(s)",
+    "Generally well-tolerated for most users"
+  ]
+}
+```
+
+### Step 6: Check Your Usage Stats
+
+```bash
+curl http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Expected Response:**
+```json
+{
+  "email": "test@example.com",
+  "firstName": "Test",
+  "lastName": "User",
+  "role": "USER",
+  "createdAt": "2025-01-15T10:30:00Z",
+  "usage": {
+    "totalTokensUsed": 4500,
+    "estimatedCost": 0.0225,
+    "analysesRun": 2
+  }
+}
+```
+
+**Congratulations!** 🎉 You've successfully:
+- ✅ Set up the application
+- ✅ Registered a user
+- ✅ Authenticated with JWT
+- ✅ Analyzed ingredients
+- ✅ Monitored API costs
 
 ---
 
@@ -419,6 +578,13 @@ mvn test
 ### Run Specific Test Class
 
 ```bash
+# Test authentication
+mvn test -Dtest=AuthServiceTest
+
+# Test allergen service
+mvn test -Dtest=OpenAISearchServiceTest
+
+# Test PubChem integration
 mvn test -Dtest=PubChemServiceTest
 ```
 
@@ -427,396 +593,497 @@ mvn test -Dtest=PubChemServiceTest
 ```bash
 mvn clean test jacoco:report
 
-# View report at:
-# target/site/jacoco/index.html
+# View report in browser
+open target/site/jacoco/index.html  # macOS
+xdg-open target/site/jacoco/index.html  # Linux
+start target/site/jacoco/index.html  # Windows
 ```
 
-### Write Your First Test
+### Integration Tests
 
-Create: `src/test/java/com/allergen/intelligence/service/PubChemServiceTest.java`
+```bash
+# Run only integration tests
+mvn test -Dtest=*IntegrationTest
 
-```java
-package com.allergen.intelligence.service;
+# Run all tests including integration
+mvn verify
+```
 
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
+---
 
-import java.util.Map;
+## Development Tools
 
-import static org.junit.jupiter.api.Assertions.*;
+### Recommended IDEs
 
-@SpringBootTest
-class PubChemServiceTest {
-    
-    @Autowired
-    private PubChemService pubChemService;
-    
-    @Test
-    void shouldRetrieveChemicalData() {
-        Map<String, String> result = pubChemService.getChemicalData("Limonene");
-        
-        assertNotNull(result);
-        assertTrue(result.containsKey("casNumber"));
-        assertEquals("5989-27-5", result.get("casNumber"));
-    }
-}
+**IntelliJ IDEA (Recommended)**
+- Best Spring Boot support
+- Excellent debugging tools
+- Built-in database tools
+- Free Community Edition available
+
+**VS Code**
+- Lightweight and fast
+- Good Java extensions
+- Great for frontend + backend work
+- Completely free
+
+### Essential IDE Plugins
+
+**IntelliJ IDEA:**
+- Lombok
+- Spring Assistant
+- Database Navigator
+- GitToolBox
+
+**VS Code:**
+- Extension Pack for Java
+- Spring Boot Extension Pack
+- Lombok Annotations Support
+- REST Client
+
+### API Testing Tools
+
+**cURL (Command Line)**
+- Included in macOS/Linux
+- Windows: Download from curl.se
+- Best for quick tests
+
+**Postman (GUI)**
+- Download: [postman.com](https://www.postman.com/downloads/)
+- Import collection from `docs/API.md`
+- Visual request builder
+- Save requests and collections
+
+**HTTPie (Modern CLI)**
+```bash
+# Install
+brew install httpie  # macOS
+pip install httpie   # Any OS
+
+# Usage (prettier than cURL)
+http POST localhost:8080/api/auth/login email=test@example.com password=Test123!
+```
+
+### Database Management
+
+**psql (Command Line)**
+```bash
+# Connect to database
+psql -d allergen_db
+
+# Useful commands
+\dt                    # List tables
+\d table_name         # Describe table
+\dx                   # List extensions
+SELECT count(*) FROM chemical_identification;
+```
+
+**pgAdmin (GUI)**
+- Download: [pgadmin.org](https://www.pgadmin.org/download/)
+- Visual database management
+- Query builder
+
+**DBeaver (Recommended)**
+- Download: [dbeaver.io](https://dbeaver.io/download/)
+- Free and lightweight
+- Multi-database support
+- Visual query builder
+
+---
+
+## Project Structure
+
+```
+allergen-intelligence/
+├── src/
+│   ├── main/
+│   │   ├── java/com/matthewbixby/allergen/intelligence/
+│   │   │   ├── AllergenIntelligenceApplication.java  # Main entry
+│   │   │   ├── config/
+│   │   │   │   ├── SecurityConfig.java              # JWT + CORS
+│   │   │   │   ├── ChatClientConfig.java            # OpenAI client
+│   │   │   │   └── VectorStoreConfig.java           # pgvector setup
+│   │   │   ├── controller/
+│   │   │   │   ├── AuthController.java              # Auth endpoints
+│   │   │   │   └── AllergenSearchController.java    # Analysis endpoints
+│   │   │   ├── service/
+│   │   │   │   ├── AuthService.java                 # User management
+│   │   │   │   ├── JwtService.java                  # Token handling
+│   │   │   │   ├── PubChemService.java              # Chemical data
+│   │   │   │   ├── OpenAISearchService.java         # AI research
+│   │   │   │   ├── VectorStoreService.java          # Caching
+│   │   │   │   └── UsageTrackingService.java        # Cost monitoring
+│   │   │   ├── model/
+│   │   │   │   ├── User.java                        # User entity
+│   │   │   │   ├── RefreshToken.java               # Token entity
+│   │   │   │   ├── ChemicalIdentification.java     # Chemical data
+│   │   │   │   ├── SideEffect.java                 # Allergen info
+│   │   │   │   └── UsageTracking.java              # Usage stats
+│   │   │   ├── repository/
+│   │   │   │   ├── UserRepository.java
+│   │   │   │   ├── ChemicalRepository.java
+│   │   │   │   ├── SideEffectRepository.java
+│   │   │   │   └── UsageTrackingRepository.java
+│   │   │   └── dto/
+│   │   │       ├── LoginRequest.java
+│   │   │       ├── ProductAnalysisResponse.java
+│   │   │       └── IngredientAnalysis.java
+│   │   └── resources/
+│   │       ├── application.properties               # Main config
+│   │       └── application-local.yml               # Local overrides
+│   └── test/                                        # Test files
+├── docs/
+│   ├── API.md                                       # API documentation
+│   ├── ARCHITECTURE.md                              # System design
+│   ├── ROADMAP.md                                   # Development plan
+│   └── GETTING_STARTED.md                           # This file
+├── pom.xml                                          # Maven dependencies
+├── README.md                                        # Project overview
+└── LICENSE                                          # MIT License
 ```
 
 ---
 
 ## Troubleshooting
 
-### Database Connection Issues
+### Database Issues
 
-**Problem:** `Connection refused`
+**Problem:** `FATAL: database "allergen_db" does not exist`
+
 ```bash
-# Check PostgreSQL is running
+# Create the database
+createdb allergen_db
+
+# Or with sudo (Linux)
+sudo -u postgres createdb allergen_db
+```
+
+**Problem:** `ERROR: extension "vector" does not exist`
+
+```bash
+# Install pgvector extension
+psql -d allergen_db -c "CREATE EXTENSION vector"
+```
+
+**Problem:** `Connection refused to localhost:5432`
+
+```bash
+# Check if PostgreSQL is running
 pg_isready
 
 # Start PostgreSQL
 brew services start postgresql@17  # macOS
 sudo systemctl start postgresql    # Linux
 docker start allergen-postgres     # Docker
-```
 
-**Problem:** `pgvector extension not found`
-```bash
-# Install pgvector
-psql -d allergen_db -c "CREATE EXTENSION vector"
-
-# If permission denied
-sudo -u postgres psql -d allergen_db -c "CREATE EXTENSION vector"
+# Check status
+brew services list                 # macOS
+sudo systemctl status postgresql   # Linux
 ```
 
 ### Build Issues
 
-**Problem:** `BUILD FAILURE` - Dependencies not downloading
+**Problem:** `BUILD FAILURE - Could not resolve dependencies`
+
 ```bash
 # Clear Maven cache
-mvn clean
-mvn dependency:purge-local-repository
-mvn clean install
+rm -rf ~/.m2/repository
+
+# Rebuild
+mvn clean install -U
 ```
 
-**Problem:** `Lombok not working`
+**Problem:** `Error: JAVA_HOME is not defined correctly`
+
+```bash
+# Set JAVA_HOME (macOS/Linux)
+export JAVA_HOME=$(/usr/libexec/java_home -v 21)  # macOS
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk     # Linux
+
+# Add to ~/.zshrc or ~/.bashrc to make permanent
+```
+
+**Problem:** `Lombok annotations not working`
+
 1. Install Lombok plugin in IDE
-2. Enable annotation processing
+2. Enable annotation processing in IDE settings
 3. Restart IDE
+4. Rebuild project: `mvn clean install`
 
 ### API Issues
 
-**Problem:** `OpenAI API key invalid`
+**Problem:** `401 Unauthorized` on protected endpoints
+
 ```bash
-# Verify key is set
+# Verify you're using a valid token
+echo $TOKEN
+
+# If empty, login again
+LOGIN_RESPONSE=$(curl -s -X POST localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"Test123!"}')
+
+TOKEN=$(echo $LOGIN_RESPONSE | jq -r '.accessToken')
+export TOKEN
+
+# Retry request
+curl localhost:8080/api/allergen/analyze/Limonene \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Problem:** `OpenAI API key invalid`
+
+```bash
+# Check if key is set
 echo $OPENAI_API_KEY
 
-# If empty, set it
-export OPENAI_API_KEY="sk-your-key"
+# Should start with "sk-proj-" or "sk-"
+# If wrong or empty, set it correctly
+export OPENAI_API_KEY="sk-proj-your-actual-key"
 
 # Restart application
 ```
 
 **Problem:** `Port 8080 already in use`
-```yaml
-# In application.properties
+
+```bash
+# Find process using port 8080
+lsof -i :8080             # macOS/Linux
+netstat -ano | findstr :8080  # Windows
+
+# Kill the process (replace PID)
+kill -9 <PID>             # macOS/Linux
+taskkill /PID <PID> /F    # Windows
+
+# Or change port in application.properties
 server.port=8081
 ```
 
-Or kill existing process:
-```bash
-# Find process
-lsof -i :8080
+**Problem:** `JWT_SECRET not configured`
 
-# Kill process (replace PID)
-kill -9 <PID>
+```bash
+# Generate and set JWT secret
+export JWT_SECRET=$(openssl rand -base64 64)
+
+# Make permanent
+echo "export JWT_SECRET=\"$(openssl rand -base64 64)\"" >> ~/.zshrc
+source ~/.zshrc
+```
+
+### Performance Issues
+
+**Problem:** First analysis takes very long (>30 seconds)
+
+This is normal for the first request:
+- OpenAI API calls take 5-10 seconds
+- PubChem lookups add 1-2 seconds
+- Embedding generation adds 1-2 seconds
+
+**Solution:** Be patient on first request. Subsequent requests will be <1 second due to caching!
+
+**Problem:** Database queries slow
+
+```sql
+-- Check table sizes
+SELECT 
+    tablename,
+    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
+FROM pg_tables
+WHERE schemaname = 'public'
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+
+-- Create missing indexes if needed
+CREATE INDEX IF NOT EXISTS idx_chemical_common_name 
+ON chemical_identification(common_name);
 ```
 
 ---
 
 ## Useful Commands
 
-### Maven Commands
+### Development Workflow
+
 ```bash
-mvn clean                    # Remove build artifacts
-mvn compile                  # Compile source code
-mvn test                     # Run tests
-mvn package                  # Create JAR file
-mvn spring-boot:run         # Run application
-mvn dependency:tree         # View dependency tree
-mvn versions:display-dependency-updates  # Check for updates
+# Daily startup
+cd allergen-intelligence
+git pull origin main
+mvn spring-boot:run
+
+# Run tests before committing
+mvn clean test
+
+# Check code style
+mvn checkstyle:check
+
+# View dependency tree
+mvn dependency:tree
+
+# Update dependencies
+mvn versions:display-dependency-updates
 ```
 
-### PostgreSQL Commands
-```bash
-psql -l                      # List all databases
-psql -d allergen_db         # Connect to database
-\dt                         # List tables in current schema
-\dt allergen.*              # List tables in allergen schema
-\d table_name               # Describe table structure
-\dx                         # List extensions
-\q                          # Quit psql
+### Database Queries
+
+```sql
+-- See all chemicals in database
+SELECT common_name, cas_number FROM chemical_identification;
+
+-- View side effects
+SELECT ce.common_name, se.effect_type, se.severity
+FROM chemical_identification ce
+JOIN side_effect se ON ce.id = se.chemical_id;
+
+-- Check usage stats
+SELECT u.email, SUM(ut.tokens_used) as total_tokens
+FROM users u
+JOIN usage_tracking ut ON u.id = ut.user_id
+GROUP BY u.email;
+
+-- View cache effectiveness
+SELECT 
+    cache_type,
+    COUNT(*) as hits,
+    AVG(tokens_used) as avg_tokens
+FROM usage_tracking
+GROUP BY cache_type;
 ```
-
-### Docker Commands
-```bash
-docker ps                           # List running containers
-docker logs allergen-postgres       # View logs
-docker exec -it allergen-postgres bash  # Enter container
-docker stop allergen-postgres       # Stop container
-docker start allergen-postgres      # Start container
-docker rm allergen-postgres         # Remove container
-```
-
-### Git Commands
-```bash
-git status                   # Check status
-git add .                    # Stage all changes
-git commit -m "message"      # Commit changes
-git push                     # Push to remote
-git pull                     # Pull latest changes
-git log --oneline           # View commit history
-git branch                   # List branches
-```
-
----
-
-## Development Best Practices
-
-### Code Style
-
-**Use Conventional Commits:**
-```bash
-feat: add new feature
-fix: resolve bug
-docs: update documentation
-test: add test cases
-refactor: improve code structure
-chore: update dependencies
-```
-
-**Follow Java Naming Conventions:**
-- Classes: `PascalCase`
-- Methods/Variables: `camelCase`
-- Constants: `UPPER_SNAKE_CASE`
-- Packages: `lowercase`
-
-### Testing Strategy
-
-1. **Unit Tests**: Test services in isolation
-2. **Integration Tests**: Test with real database
-3. **API Tests**: Test REST endpoints
-4. **Coverage Goal**: Maintain >80%
 
 ### Git Workflow
 
 ```bash
 # Create feature branch
-git checkout -b feature/chemical-intelligence
+git checkout -b feature/your-feature-name
 
-# Make changes and commit
+# Make changes, then stage and commit
 git add .
-git commit -m "feat: implement oxidation product detection"
+git commit -m "feat: add new feature"
 
-# Push branch
-git push -u origin feature/chemical-intelligence
+# Push to remote
+git push -u origin feature/your-feature-name
 
-# Create Pull Request on GitHub
-# After review, merge to main
+# After PR approval, merge to main
+git checkout main
+git pull origin main
 ```
-
----
-
-## IDE Configuration
-
-### IntelliJ IDEA Setup
-
-**1. Install Required Plugins:**
-- Lombok
-- Spring Boot
-- Database Navigator (optional)
-
-**2. Configure Project:**
-- File → Project Structure → Project SDK → 21
-- File → Settings → Build → Compiler → Annotation Processors → Enable
-
-**3. Run Configuration:**
-- Run → Edit Configurations
-- Add → Spring Boot
-- Main class: `AllergenIntelligenceApplication`
-- Active profiles: `dev`
-
-### VS Code Setup
-
-**1. Install Extensions:**
-- Extension Pack for Java
-- Spring Boot Extension Pack
-- Lombok Annotations Support
-
-**2. Configure settings.json:**
-```json
-{
-    "java.configuration.updateBuildConfiguration": "automatic",
-    "java.compile.nullAnalysis.mode": "automatic"
-}
-```
-
----
-
-## Database Management Tools
-
-### Command Line (psql)
-
-Best for quick queries and admin tasks.
-
-### pgAdmin
-
-**Install:**
-```bash
-# macOS
-brew install --cask pgadmin4
-
-# Windows/Linux - Download from:
-# https://www.pgadmin.org/download/
-```
-
-**Connect:**
-1. Launch pgAdmin
-2. Create new server connection
-3. Host: localhost, Port: 5432
-4. Database: allergen_db
-
-### DBeaver (Free, Multi-Platform)
-
-**Download:** https://dbeaver.io/download/
-
-Recommended for visual database exploration and query building.
-
----
-
-## Performance Monitoring
-
-### Application Metrics
-
-Access at: `http://localhost:8080/actuator/metrics`
-
-**View Specific Metrics:**
-```bash
-# HTTP requests
-curl http://localhost:8080/actuator/metrics/http.server.requests
-
-# JVM memory
-curl http://localhost:8080/actuator/metrics/jvm.memory.used
-
-# Database connections
-curl http://localhost:8080/actuator/metrics/hikari.connections
-```
-
-### Database Performance
-
-```sql
--- View active queries
-SELECT * FROM pg_stat_activity;
-
--- View table sizes
-SELECT 
-    schemaname,
-    tablename,
-    pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
-FROM pg_tables
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
-
--- View index usage
-SELECT * FROM pg_stat_user_indexes;
-```
-
----
-
-## Resources
-
-### Official Documentation
-- **Spring Boot**: https://spring.io/projects/spring-boot
-- **Spring AI**: https://docs.spring.io/spring-ai/reference/
-- **pgvector**: https://github.com/pgvector/pgvector
-- **OpenAI**: https://platform.openai.com/docs/
-
-### Learning Resources
-- **Spring Boot Tutorial**: https://www.baeldung.com/spring-boot
-- **REST API Design**: https://restfulapi.net/
-- **Vector Databases**: https://www.pinecone.io/learn/vector-database/
-- **RAG Architecture**: https://www.anthropic.com/research/retrieval-augmented-generation
-
-### Community
-- **Stack Overflow**: Use tags `spring-boot`, `spring-ai`, `pgvector`
-- **Spring AI GitHub**: https://github.com/spring-projects/spring-ai
-- **Discord/Slack**: Join Spring community channels
 
 ---
 
 ## Next Steps
 
-### Week 1 Goals
+### You're Ready For:
 
-1. **Complete PubChem Service**
-    - Implement all API methods
-    - Add error handling
-    - Write tests
+1. **Frontend Development** 🎨
+   - Start building React frontend
+   - Integrate with API endpoints
+   - See [docs/ROADMAP.md](ROADMAP.md) Phase 5
 
-2. **Build Repository Layer**
-    - Create custom queries
-    - Test database operations
+2. **Add Features** ✨
+   - Implement image upload (GPT-4 Vision)
+   - Add batch analysis
+   - Build comparison tools
 
-3. **Create REST Endpoints**
-    - Implement CRUD operations
-    - Add validation
-    - Document with Swagger
+3. **Deploy to Production** 🚀
+   - Set up Railway or AWS
+   - Configure production database
+   - Set up monitoring
 
-### Development Checklist
+### Learning Resources
 
-- [ ] Environment variables configured
-- [ ] Database connection verified
-- [ ] Application runs successfully
-- [ ] First test passes
-- [ ] Health endpoint responds
-- [ ] PubChem integration works
-- [ ] Git repository initialized
-- [ ] IDE configured properly
+**Backend Development:**
+- [Spring Boot Reference](https://docs.spring.io/spring-boot/docs/current/reference/html/)
+- [Spring AI Documentation](https://docs.spring.io/spring-ai/reference/)
+- [JWT Authentication Guide](https://www.baeldung.com/spring-security-oauth-jwt)
+
+**Database & Caching:**
+- [pgvector Documentation](https://github.com/pgvector/pgvector)
+- [PostgreSQL Performance Tuning](https://wiki.postgresql.org/wiki/Performance_Optimization)
+
+**AI Integration:**
+- [OpenAI API Docs](https://platform.openai.com/docs/)
+- [RAG Patterns](https://www.anthropic.com/research)
+
+### Explore the Codebase
+
+```bash
+# Look at key files
+cat src/main/java/.../AllergenIntelligenceApplication.java
+cat src/main/java/.../controller/AllergenSearchController.java
+cat src/main/java/.../service/OpenAISearchService.java
+cat src/main/resources/application.properties
+
+# Review tests
+ls src/test/java/.../service/
+```
 
 ---
 
 ## Getting Help
 
-### Debug Checklist
+### Check These First
 
-1. **Check Logs**: Look in console output for errors
-2. **Verify Environment**: Ensure all env variables are set
-3. **Test Database**: Confirm PostgreSQL is running and accessible
-4. **Check Dependencies**: Run `mvn dependency:tree`
-5. **Review Configuration**: Verify application.properties settings
+1. **Console Logs:** Look for errors in terminal output
+2. **Application Logs:** Check `logs/` directory
+3. **Database:** Verify with `psql -d allergen_db`
+4. **Environment:** Confirm all env vars are set
 
-### Common Solutions
+### Documentation
 
-**Application won't start:**
-1. Check Java version: `java -version`
-2. Verify Maven build: `mvn clean install`
-3. Check port availability: `lsof -i :8080`
+- **API Reference:** [docs/API.md](API.md)
+- **Architecture:** [docs/ARCHITECTURE.md](ARCHITECTURE.md)
+- **Project Overview:** [README.md](../README.md)
+- **Roadmap:** [docs/ROADMAP.md](ROADMAP.md)
 
-**Tests failing:**
-1. Ensure test database exists
-2. Check H2 in-memory DB configuration (for unit tests)
-3. Verify test resources
+### Community Resources
 
-**API not responding:**
-1. Check application logs
-2. Verify endpoint mapping
-3. Test with Postman/curl
+- **GitHub Issues:** Report bugs or ask questions
+- **Stack Overflow:** Use tags `spring-boot`, `spring-ai`, `pgvector`
+- **Spring Community:** [spring.io/community](https://spring.io/community)
+
+---
+
+## Success Checklist
+
+Before considering setup complete:
+
+- [ ] PostgreSQL installed and running
+- [ ] `allergen_db` database created
+- [ ] pgvector extension enabled
+- [ ] Java 21 installed and verified
+- [ ] Maven installed and working
+- [ ] OPENAI_API_KEY environment variable set
+- [ ] JWT_SECRET environment variable set
+- [ ] Application builds successfully (`mvn clean install`)
+- [ ] Application starts without errors
+- [ ] Health endpoint responds: `curl localhost:8080/actuator/health`
+- [ ] User registration works
+- [ ] Login returns JWT tokens
+- [ ] Ingredient analysis works
+- [ ] Usage tracking shows correct token counts
 
 ---
 
 ## Conclusion
 
-You now have a complete local development environment for the Allergen Intelligence Platform. The application should be running with database connectivity, API endpoints responding, and tests passing.
+🎉 **Congratulations!** You now have a fully functional, production-ready allergen analysis platform running locally.
 
-**Next:** Review the [ROADMAP.md](ROADMAP.md) for detailed development phases and start implementing Phase 1 features.
+The platform features:
+- ✅ JWT authentication with secure token rotation
+- ✅ Three-tier caching (97.5% cost savings)
+- ✅ Real-time usage and cost tracking
+- ✅ Automated oxidation product detection
+- ✅ AI-powered allergen research
+- ✅ Comprehensive API documentation
+
+**You're ready to:**
+- Build the frontend interface
+- Add new features
+- Deploy to production
+- Start analyzing products!
 
 Happy coding! 🚀
+
+---
+
+**Last Updated:** December 2025  
+**Application Version:** 1.0.0  
+**Author:** Matthew Bixby

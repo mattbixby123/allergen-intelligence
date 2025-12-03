@@ -79,6 +79,13 @@ A production-grade REST API that bridges the gap between ingredient labels and a
 
 ---
 
+## Documentation
+Complete guides and technical references:
+- 📖 [Getting Started](docs/GETTING_STARTED.md) - Complete setup guide
+- 🏗️ [Architecture](docs/ARCHITECTURE.md) - System design with diagrams
+- 📡 [API Reference](docs/API.md) - All endpoints with examples
+- 🗺️ [Roadmap](docs/ROADMAP.md) - Development history & future plans
+
 ## 🛠️ Tech Stack
 
 ### Backend Framework
