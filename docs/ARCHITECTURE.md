@@ -194,7 +194,7 @@ The platform uses a sophisticated three-tier caching approach to minimize costs:
 
 ```mermaid
 graph TD
-    A[Incoming Query:<br/>"Analyze Limonene"] --> B{Tier 1:<br/>Database Cache}
+    A["Incoming Query: Analyze Limonene"] --> B{Tier 1:<br/>Database Cache}
     
     B -->|✅ HIT| C[Return from PostgreSQL<br/>Response Time: <10ms<br/>Token Cost: 0]
     
